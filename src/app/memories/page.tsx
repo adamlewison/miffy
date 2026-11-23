@@ -39,7 +39,7 @@ export default function Memories() {
       <h1>What {bunny.name} remembers</h1>
       <p>
         The newest 30 are loaded into every call. Storage: <b>{backend || "…"}</b>
-        {backend === "memory" && " (temporary — set up Supabase to keep these across deploys)"}
+        {backend === "memory" && " (temporary — set up Turso to keep these across deploys)"}
       </p>
       <form onSubmit={add} className="row">
         <input value={fact} onChange={(e) => setFact(e.target.value)} placeholder="Add a memory, e.g. She loves strawberry jam." />

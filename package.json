@@ -10,6 +10,7 @@
     "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@openai/agents": "^0.22.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.2",

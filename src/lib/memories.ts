@@ -1,39 +1,51 @@
+import { createClient, type Client } from "@libsql/client";
+
 /**
- * Memory store. Uses Supabase (PostgREST over fetch — no SDK needed) when
- * SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are set; otherwise falls back to an
- * in-process array so local dev works without any setup.
+ * Memory store. Uses Turso (libSQL) when TURSO_DATABASE_URL is set; otherwise
+ * falls back to an in-process array so local dev works without any setup.
+ * The table is created automatically on first use.
  *
  * Only extracted facts are ever stored. Never audio, never full transcripts.
  */
 
 export type Memory = { id?: string; fact: string; created_at?: string };
 
-const url = process.env.SUPABASE_URL?.replace(/\/$/, "");
-const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-export const memoryBackend = url && key ? "supabase" : "memory";
+const dbUrl = process.env.TURSO_DATABASE_URL;
+export const memoryBackend = dbUrl ? "turso" : "memory";
 
-type G = typeof globalThis & { __bunnyMemories?: Memory[] };
-const local = ((globalThis as G).__bunnyMemories ??= []);
+type G = typeof globalThis & { __bunnyMemories?: Memory[]; __bunnyDb?: Promise<Client> };
+const g = globalThis as G;
+const local = (g.__bunnyMemories ??= []);
 
-function headers(extra: Record<string, string> = {}) {
-  return {
-    apikey: key!,
-    Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json",
-    ...extra,
-  };
+function db(): Promise<Client> {
+  g.__bunnyDb ??= (async () => {
+    const client = createClient({ url: dbUrl!, authToken: process.env.TURSO_AUTH_TOKEN });
+    await client.batch(
+      [
+        `CREATE TABLE IF NOT EXISTS memories (
+           id TEXT PRIMARY KEY,
+           fact TEXT NOT NULL CHECK (length(fact) BETWEEN 3 AND 400),
+           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+         )`,
+        "CREATE INDEX IF NOT EXISTS memories_created_at_idx ON memories (created_at DESC)",
+      ],
+      "write",
+    );
+    return client;
+  })().catch((err) => {
+    g.__bunnyDb = undefined; // retry on the next request
+    throw err;
+  });
+  return g.__bunnyDb;
 }
 
 export async function listMemories(limit = 30): Promise<Memory[]> {
-  if (memoryBackend === "memory") {
-    return local.slice(-limit).reverse();
-  }
-  const res = await fetch(
-    `${url}/rest/v1/memories?select=id,fact,created_at&order=created_at.desc&limit=${limit}`,
-    { headers: headers(), cache: "no-store" },
-  );
-  if (!res.ok) throw new Error(`Supabase list failed: ${res.status} ${await res.text()}`);
-  return res.json();
+  if (memoryBackend === "memory") return local.slice(-limit).reverse();
+  const rs = await (await db()).execute({
+    sql: "SELECT id, fact, created_at FROM memories ORDER BY created_at DESC LIMIT ?",
+    args: [limit],
+  });
+  return rs.rows.map((r) => ({ id: String(r.id), fact: String(r.fact), created_at: String(r.created_at) }));
 }
 
 export async function addMemories(facts: string[]): Promise<void> {
@@ -44,12 +56,15 @@ export async function addMemories(facts: string[]): Promise<void> {
     for (const fact of clean) local.push({ id: crypto.randomUUID(), fact, created_at: now });
     return;
   }
-  const res = await fetch(`${url}/rest/v1/memories`, {
-    method: "POST",
-    headers: headers({ Prefer: "return=minimal" }),
-    body: JSON.stringify(clean.map((fact) => ({ fact }))),
-  });
-  if (!res.ok) throw new Error(`Supabase insert failed: ${res.status} ${await res.text()}`);
+  // Distinct timestamps keep ordering stable within one batch.
+  const base = Date.now();
+  await (await db()).batch(
+    clean.map((fact, i) => ({
+      sql: "INSERT INTO memories (id, fact, created_at) VALUES (?, ?, ?)",
+      args: [crypto.randomUUID(), fact, new Date(base + i).toISOString()],
+    })),
+    "write",
+  );
 }
 
 export async function deleteMemory(id: string): Promise<void> {
@@ -58,9 +73,5 @@ export async function deleteMemory(id: string): Promise<void> {
     if (i >= 0) local.splice(i, 1);
     return;
   }
-  const res = await fetch(`${url}/rest/v1/memories?id=eq.${encodeURIComponent(id)}`, {
-    method: "DELETE",
-    headers: headers(),
-  });
-  if (!res.ok) throw new Error(`Supabase delete failed: ${res.status}`);
+  await (await db()).execute({ sql: "DELETE FROM memories WHERE id = ?", args: [id] });
 }

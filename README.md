@@ -2,13 +2,13 @@
 
 A private web app. She opens it on her phone and taps **Call**. It rings, the bunny picks up, and she talks to her plush bunny out loud. The bunny answers in its own voice while moving in 3D, and it remembers things between calls.
 
-Stack: **Next.js 16** (App Router) on Vercel · **React Three Fiber** for the bunny · **OpenAI Realtime** (speech-to-speech over WebRTC) · **Supabase** for memories.
+Stack: **Next.js 16** (App Router) on Vercel · **React Three Fiber** for the bunny · **OpenAI Realtime** (speech-to-speech over WebRTC) · **Turso** (libSQL) for memories.
 
 ```
 phone ──WebRTC audio──▶ OpenAI Realtime      (audio never touches the server)
   │
   └─ /api/session ──▶ mints a 10-min client secret + loads personality & memories
-  └─ /api/memories ◀── transcript after the call → cheap model → 3–5 facts → Supabase
+  └─ /api/memories ◀── transcript after the call → cheap model → 3–5 facts → Turso
 ```
 
 ## Quick start
@@ -42,8 +42,8 @@ None of the helper pages are linked from the call UI.
 ## Deploy (Vercel)
 
 1. Push this repo and import it in Vercel.
-2. Set environment variables: `OPENAI_API_KEY`, `BUNNY_PASSCODE`, `AUTH_SECRET` (`openssl rand -hex 32`), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. The optional ones are listed in `.env.example`.
-3. **Supabase:** create a free project, run `supabase/schema.sql` in the SQL editor, and copy the URL and the **service role** key. Without Supabase, memories live in server RAM and disappear on every cold start.
+2. Set environment variables: `OPENAI_API_KEY`, `BUNNY_PASSCODE`, `AUTH_SECRET` (`openssl rand -hex 32`), `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`. The optional ones are listed in `.env.example`.
+3. **Turso:** create a free database (`turso db create bunny`), then copy its URL (`turso db show bunny --url`) and a token (`turso db tokens create bunny`). The `memories` table is created automatically on first use (`db/schema.sql` is there for reference). Without Turso, memories live in server RAM and disappear on every cold start. Locally you can use `TURSO_DATABASE_URL=file:local.db`.
 4. **Set a monthly spend cap** in the OpenAI dashboard (about £20). Realtime is billed per audio token. Calls are hard-capped at `NEXT_PUBLIC_MAX_CALL_MINUTES` (default 20).
 5. On her phone: open the URL, enter the passcode once (the cookie lasts a year), then **Share → Add to Home Screen**. It installs as a full-screen app with the bunny icon.
 
@@ -105,7 +105,7 @@ The fur look comes from `addFuzzRim` in `materials.ts`, a soft rim-light shader 
 - The passcode lock (`src/proxy.ts`) covers every page and API route. Cookies are HMAC-signed, and changing the passcode logs every device out.
 - The OpenAI key exists only on the server. The phone gets a 10-minute ephemeral key.
 - No audio is stored. Transcripts are used once to extract facts, then dropped.
-- The Supabase table has RLS enabled and no policies, so only the server's service-role key can reach it.
+- The Turso database is reached only from the server, using an auth token that never reaches the phone.
 
 ## Project map
 ```
@@ -129,9 +129,9 @@ src/
   lib/
     useBunnyCall.ts          Realtime session, tools, events, camera frames
     prompt.ts                system prompt builder
-    memories.ts              Supabase (or in-memory) store
+    memories.ts              Turso (or in-memory) store
     sounds.ts                synthesised ringback / pickup / hang-up
-supabase/schema.sql
+db/schema.sql
 scripts/make-icons.mjs       regenerates PWA icons from scripts/bunny-face.svg
 ```
 
