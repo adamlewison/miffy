@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { bunny } from "@/bunny.config";
-import { bunnyState, setMode, triggerTrick, type Mode, type Trick } from "@/lib/bunnyState";
+import { bunnyState, setMode, triggerGesture, triggerTrick, type Gesture, type Mode, type Trick } from "@/lib/bunnyState";
 
 const BunnyScene = dynamic(() => import("@/components/bunny/BunnyScene"), { ssr: false });
 
@@ -36,6 +36,7 @@ export default function Preview() {
 
   const modes: Mode[] = ["idle", "listening", "thinking", "talking"];
   const tricks: Trick[] = ["hop", "ear_flick", "wiggle", "spin"];
+  const gestures: Gesture[] = ["wave", "sad", "nuzzle"];
   return (
     <main className="app" style={{ "--bg-top": bunny.scene.backgroundTop, "--bg-bottom": bunny.scene.backgroundBottom } as React.CSSProperties}>
       <div className="scene visible">
@@ -53,6 +54,11 @@ export default function Preview() {
           {tricks.map((t) => (
             <button key={t} className="pill small ghost" onClick={() => triggerTrick(t)}>
               {t}
+            </button>
+          ))}
+          {gestures.map((g) => (
+            <button key={g} className="pill small ghost" onClick={() => triggerGesture(g)}>
+              {g}
             </button>
           ))}
           <button className="pill small ghost" onClick={() => setLive((v) => !v)}>

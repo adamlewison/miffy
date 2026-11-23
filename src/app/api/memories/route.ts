@@ -84,7 +84,8 @@ async function extractFacts(lines: Line[]): Promise<string[]> {
           role: "system",
           content: `You maintain the long-term memory of ${bunny.name}, a talking plush bunny, about its owner ${bunny.ownerName}.
 From the call transcript, extract 0-5 NEW facts worth remembering for future calls: things about her life, plans, feelings, people, preferences, events, and any new jokes or promises between her and the bunny.
-- Write each fact as a short third-person sentence about her, e.g. "She has a job interview on Friday (said on ${new Date().toDateString()})." Include dates for time-sensitive things.
+- Family names to use: ${bunny.family.join(" ")}
+- Write each fact as a short third-person sentence about her (she is "${bunny.ownerName}"), e.g. "She has a job interview on Friday (said on ${new Date().toDateString()})." Include dates for time-sensitive things.
 - Skip small talk, greetings, and anything already in the existing memories.
 - Never record anything sensitive like passwords, card numbers or health details beyond what a friend would naturally remember.
 - If nothing is worth remembering, return an empty list.`,

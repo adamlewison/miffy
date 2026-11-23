@@ -43,7 +43,7 @@ type Rest = { p: THREE.Vector3; q: THREE.Quaternion; s: THREE.Vector3 };
 type Spring = { a: number; v: number };
 type EarSprings = { x1: Spring; x2: Spring; z1: Spring; z2: Spring };
 
-const { damp, clamp } = THREE.MathUtils;
+const { damp, clamp, lerp } = THREE.MathUtils;
 const _e = new THREE.Euler();
 const _q = new THREE.Quaternion();
 
@@ -91,6 +91,8 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
     L: { x1: { a: 0, v: 0 }, x2: { a: 0, v: 0 }, z1: { a: 0, v: 0 }, z2: { a: 0, v: 0 } } as EarSprings,
     R: { x1: { a: 0, v: 0 }, x2: { a: 0, v: 0 }, z1: { a: 0, v: 0 }, z2: { a: 0, v: 0 } } as EarSprings,
     lean: 0,
+    /** Smoothed gesture weights 0..1. */
+    g: { wave: 0, sad: 0, nuzzle: 0 },
   });
 
   const captureRest = (o: THREE.Object3D | null) => {
@@ -201,12 +203,26 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       }
     }
 
+    // ---- Gestures: held poses, blended in and out smoothly ----------------
+    const ge = bunnyState.gesture;
+    if (ge && now > ge.until) bunnyState.gesture = null;
+    const gw = s.g;
+    for (const k of ["wave", "sad", "nuzzle"] as const) {
+      gw[k] = damp(gw[k], bunnyState.gesture?.type === k ? 1 : 0, k === "wave" ? 7 : 4, dt);
+    }
+    // Nuzzle: rub the head side to side, leaning in toward the camera.
+    const rub = Math.sin(t * 4.2);
+    const headX = s.head.x * (1 - gw.sad * 0.6) + gw.sad * 0.38 + gw.nuzzle * 0.12;
+    const headY = s.head.y + gw.nuzzle * 0.14 * Math.sin(t * 4.2 + 0.6);
+    const headZ = s.head.z * (1 - gw.sad * 0.5) + gw.wave * 0.12 + gw.nuzzle * 0.22 * rub;
+
     // ---- Root: sway, hop, spin -------------------------------------------
     if (rig.root) {
       const r = rest.current.get(rig.root)!;
       rig.root.position.copy(r.p);
       rig.root.position.y += hopY * I;
-      _e.set(s.lean * I, spinY + 0.04 * Math.sin(t * 0.37) * I, (0.025 * Math.sin(t * 0.7) + wiggleZ) * I);
+      rig.root.position.z += gw.nuzzle * 0.12 * I;
+      _e.set((s.lean + gw.nuzzle * 0.16 + gw.sad * 0.07) * I, spinY + 0.04 * Math.sin(t * 0.37) * I, (0.025 * Math.sin(t * 0.7) + wiggleZ) * I);
       rig.root.quaternion.copy(r.q).multiply(_q.setFromEuler(_e));
       const vy = (rig.root.position.y - s.prevRootY) / Math.max(dt, 1e-3);
       const accY = (vy - s.rootVelY) / Math.max(dt, 1e-3);
@@ -224,7 +240,8 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
     if (rig.body) {
       const r = rest.current.get(rig.body)!;
       const breath = 0.02 * Math.sin((t * Math.PI * 2) / 3.6);
-      const sy = 1 + breath * I - lvl * 0.04 * I - syllable * 0.25 * I - landSquash;
+      const snuggle = gw.nuzzle * 0.025 * (1 + Math.sin(t * 8.4));
+      const sy = 1 + breath * I - lvl * 0.04 * I - syllable * 0.25 * I - landSquash - gw.sad * 0.05 - snuggle;
       const sxz = 1 + (1 - sy) * 0.55;
       rig.body.scale.set(r.s.x * sxz, r.s.y * sy, r.s.z * sxz);
     }
@@ -232,11 +249,13 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
     // ---- Head ---------------------------------------------------------------
     if (rig.head) {
       const r = rest.current.get(rig.head)!;
-      _e.set(s.head.x * I, s.head.y * I, s.head.z * I);
+      _e.set(headX * I, headY * I, headZ * I);
       rig.head.quaternion.copy(r.q).multiply(_q.setFromEuler(_e));
     }
-    const headVel = s.head.clone().sub(s.prevHead).divideScalar(Math.max(dt, 1e-3));
-    s.prevHead.copy(s.head);
+    // Ears react to the head as actually posed (gestures included).
+    const headNow = new THREE.Vector3(headX, headY, headZ);
+    const headVel = headNow.clone().sub(s.prevHead).divideScalar(Math.max(dt, 1e-3));
+    s.prevHead.copy(headNow);
 
     // ---- Jaw / cheeks: a soft squash of the lower face timed to volume ------
     if (rig.jaw) {
@@ -260,8 +279,10 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       const fx = -headVel.x * 9 - talkBounce - flick * 220 - twitch * 120;
       const fz = -headVel.z * 9 * side + headVel.y * 4 * side + flick * 60;
       // Positive lift pulls ears upright (less splay), droop lets one fall.
-      const restZ = -s.earLift * 0.6 + droop;
-      const restX = -s.earLift * 0.25 + droop * 0.3;
+      // Sad: both ears flop right down. Nuzzle: ears relax back.
+      const lift = s.earLift * (1 - gw.sad) - gw.sad * 0.2;
+      const restZ = -lift * 0.6 + droop * (1 - gw.sad) + gw.sad * 0.75 + gw.nuzzle * 0.25;
+      const restX = -lift * 0.25 + droop * 0.3 - gw.nuzzle * 0.35 + gw.sad * 0.25;
       const ax1 = stepSpring(sp.x1, restX, 140, 7, fx, dt);
       stepSpring(sp.x2, restX * 0.6, 110, 5, -ax1 * 0.35 + fx * 0.4, dt);
       const az1 = stepSpring(sp.z1, restZ, 120, 6, fz, dt);
@@ -288,8 +309,25 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       const r = rest.current.get(n)!;
       const swing = 0.05 * Math.sin(t * 0.9 + phase) + (mode === "talking" ? 0.25 * lvl * Math.sin(t * 3.2 + phase) : 0);
       const lift = (mode === "listening" ? 0.08 : 0) + hopY * 1.5 + syllable * 0.6;
-      _e.set(-swing * I, 0, lift * side * I);
+      let ax = -swing;
+      let az = lift * side;
+      // Wave (left paw only): paw up right beside the face, little side-to-side waves.
+      let stretch = 1;
+      if (side === 1 && gw.wave > 0.001) {
+        ax = lerp(ax, -2.85, gw.wave);
+        az = lerp(az, 0.22 + 0.28 * Math.sin(t * 10.5), gw.wave);
+        stretch = lerp(stretch, 1.35, gw.wave);
+      }
+      // Sad: both paws come up to cover the face (soft plush arms stretch a little).
+      ax = lerp(ax, -2.5, gw.sad);
+      az = lerp(az, -0.72 * side, gw.sad);
+      stretch = lerp(stretch, 1.8, gw.sad);
+      // Nuzzle: arms come forward and in, like a cuddle.
+      ax = lerp(ax, -1.35 + 0.08 * rub, gw.nuzzle);
+      az = lerp(az, -0.55 * side, gw.nuzzle);
+      _e.set(ax * I, 0, az * I);
       n.quaternion.copy(r.q).multiply(_q.setFromEuler(_e));
+      n.scale.set(r.s.x, r.s.y * stretch, r.s.z);
     };
     arm(rig.armL, 1, 0);
     arm(rig.armR, -1, 1.7);

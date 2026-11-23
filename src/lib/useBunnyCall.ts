@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OpenAIRealtimeWebRTC, RealtimeAgent, RealtimeSession, tool, type RealtimeItem } from "@openai/agents/realtime";
 import { z } from "zod";
-import { bunnyState, setMode, triggerTrick, type Trick } from "./bunnyState";
+import { bunnyState, setMode, triggerGesture, triggerTrick, type Gesture, type Trick } from "./bunnyState";
 import { getAudioContext, playHangup, playPickup, startRingback, unlockAudio } from "./sounds";
 
 export type CallStatus = "idle" | "ringing" | "live" | "ended" | "error";
@@ -45,15 +45,20 @@ function makeTools() {
       },
     }),
     tool({
-      name: "do_trick",
+      name: "express",
       description:
-        "Do a little physical trick on screen. Use when excited, celebrating, or when she asks you to do a trick. Keep talking normally while it happens.",
+        "Move your body on screen, like natural body language. Call it silently before speaking; never mention or describe the movement — she can see it.",
       parameters: z.object({
-        trick: z.enum(["hop", "ear_flick", "wiggle", "spin"]).describe("hop = little jump, ear_flick = both ears flick up, wiggle = happy wiggle, spin = a twirl"),
+        move: z
+          .enum(["wave", "nuzzle", "sad", "hop", "wiggle", "spin", "ear_flick"])
+          .describe(
+            "wave = tiny paw wave beside your face (hello/goodbye); nuzzle = lean in and snuggle (cuddles, comfort, love); sad = sag your head and cover your face with your paws; hop = little jump; wiggle = happy wiggle; spin = twirl; ear_flick = both ears flick up",
+          ),
       }),
-      execute: async ({ trick }) => {
-        triggerTrick(trick as Trick);
-        return "done — you did it beautifully";
+      execute: async ({ move }) => {
+        if (move === "wave" || move === "nuzzle" || move === "sad") triggerGesture(move as Gesture);
+        else triggerTrick(move as Trick);
+        return "done";
       },
     }),
     tool({
@@ -291,6 +296,7 @@ export function useBunnyCall() {
       playPickup();
       audioEl.play().catch(() => {});
       bunnyState.live = true;
+      triggerGesture("wave"); // she always waves when she picks up
       setStartedAt(Date.now());
       setStatus("live");
 
@@ -303,7 +309,7 @@ export function useBunnyCall() {
           content: [
             {
               type: "input_text",
-              text: `${info.ownerName} just called you and you picked up. Silently call get_time_of_day first (don't mention it), then greet her warmly and happily in one or two short sentences.`,
+              text: `${info.ownerName} just called you and you picked up. Silently call get_time_of_day first (don't mention it), then greet her warmly and happily in one or two short sentences. (You're already waving hello.)`,
             },
           ],
         },

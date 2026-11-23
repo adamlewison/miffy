@@ -1,7 +1,7 @@
 {
-  "name": "Miffy",
-  "short_name": "Miffy",
-  "description": "Call your bunny",
+  "name": "Oney",
+  "short_name": "Oney",
+  "description": "Call Oney",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

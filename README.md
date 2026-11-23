@@ -1,4 +1,4 @@
-# Miffy: the talking bunny
+# Oney: the talking bunny
 
 A private web app. She opens it on her phone and taps **Call**. It rings, the bunny picks up, and she talks to her plush bunny out loud. The bunny answers in its own voice while moving in 3D, and it remembers things between calls.
 
@@ -57,7 +57,8 @@ None of the helper pages are linked from the call UI.
   - server events switch the animation between listening, thinking, talking and idle
   - interruption is built in: when she starts talking, the reply is cut off
   - the bunny speaks first when it "picks up"
-  - tools: `get_time_of_day`, `do_trick` (hop / ear_flick / wiggle / spin) and `remember_this`
+  - tools: `get_time_of_day`, `express` (body language: wave / nuzzle / sad, plus hop / wiggle / spin / ear_flick) and `remember_this`
+  - she waves hello automatically when she picks up
   - when the call ends, the transcript is sent to `/api/memories` and then discarded. Only the extracted facts are stored. No audio is ever stored.
 
 ### Animation (Phase 3)
@@ -69,6 +70,9 @@ None of the helper pages are linked from the call UI.
 | Listening | head tilts toward her, ears perk up, slight lean in |
 | Thinking | head tilts the other way and looks up, one ear droops |
 | Talking | head bob and body squish from reply volume (smoothed over ~80 ms), jaw/cheek squash, ears bounce on each "syllable" |
+| Wave | left paw up beside her face, little side-to-side waves, head tilts toward it |
+| Sad | head sags, both ears flop down, paws come up to cover her face |
+| Nuzzle | leans in toward the camera, rubs her head side to side, arms come forward in a cuddle |
 | Tricks | hop (with landing squash), ear flick, wiggle, spin |
 
 The ears are damped springs that lag behind the head and the body's vertical movement. The mouth is never animated as lip shapes: the lower face just squashes in time with the volume.
