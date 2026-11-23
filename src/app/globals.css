@@ -1,0 +1,264 @@
+:root {
+  --bg-top: #f6e7d8;
+  --bg-bottom: #d9b99b;
+  --ink: #3b2a20;
+  --ink-soft: #7a604e;
+  --green: #34c759;
+  --red: #ff3b30;
+  --glass: rgba(255, 255, 255, 0.28);
+  --glass-on: rgba(255, 255, 255, 0.92);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg-bottom);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+button { font: inherit; cursor: pointer; }
+
+/* ---------- App shell ---------- */
+.app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bokeh { position: absolute; inset: 0; filter: blur(28px); opacity: 0.75; pointer-events: none; }
+.bokeh span {
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: drift 22s ease-in-out infinite alternate;
+}
+@keyframes drift {
+  from { transform: translate(-50%, -50%) scale(1); }
+  to { transform: translate(-42%, -58%) scale(1.15); }
+}
+
+.scene { position: absolute; inset: 0; opacity: 0; transition: opacity 0.6s ease; }
+.scene.visible { opacity: 1; }
+
+.avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  background: #fff6ec;
+  box-shadow: 0 12px 40px rgba(90, 55, 30, 0.25), 0 0 0 4px rgba(255, 255, 255, 0.6);
+}
+
+h1 { font-size: 34px; font-weight: 600; margin: 18px 0 4px; letter-spacing: -0.02em; }
+.sub { margin: 0; color: var(--ink-soft); font-size: 17px; }
+.error {
+  margin: 16px 24px 0;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  color: #9c2b1d;
+  text-align: center;
+  font-size: 15px;
+}
+
+/* ---------- Round call buttons ---------- */
+.round {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  transition: transform 0.12s ease, background 0.2s ease;
+}
+.round:active { transform: scale(0.92); }
+.round.call { background: var(--green); width: 80px; height: 80px; box-shadow: 0 10px 30px rgba(52, 199, 89, 0.45); }
+.round.hangup { background: var(--red); box-shadow: 0 10px 30px rgba(255, 59, 48, 0.35); }
+.round.glass { background: var(--glass); color: var(--ink); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+.round.glass.on { background: var(--glass-on); }
+.label { margin-top: 10px; font-size: 15px; color: var(--ink-soft); }
+
+/* ---------- Contact ---------- */
+.contact, .ringing, .ended, .login {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: calc(var(--safe-top) + 12vh) 16px calc(var(--safe-bottom) + 48px);
+  text-align: center;
+}
+.contact-top { display: flex; flex-direction: column; align-items: center; }
+.contact-actions { margin-top: auto; display: flex; flex-direction: column; align-items: center; }
+.contact .avatar { animation: breathe 4s ease-in-out infinite; }
+@keyframes breathe { 50% { transform: scale(1.03); } }
+
+/* ---------- Ringing ---------- */
+.ringing { background: linear-gradient(180deg, rgba(246, 231, 216, 0.6), rgba(217, 185, 155, 0.85)); backdrop-filter: blur(6px); z-index: 2; }
+.ring-avatar { position: relative; display: grid; place-items: center; }
+.pulse {
+  position: absolute;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  animation: pulse 2s ease-out infinite;
+}
+.pulse.p2 { animation-delay: 1s; }
+@keyframes pulse { from { transform: scale(1); opacity: 0.9; } to { transform: scale(1.9); opacity: 0; } }
+.calling { animation: blink 1.6s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: 0.45; } }
+
+/* ---------- Live ---------- */
+.live { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.live-top {
+  position: absolute;
+  top: calc(var(--safe-top) + 14px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-shadow: 0 1px 8px rgba(255, 255, 255, 0.6);
+}
+.live-top .name { font-size: 20px; font-weight: 600; }
+.live-top .timer { font-size: 14px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+.controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--safe-bottom) + 28px);
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  pointer-events: auto;
+}
+.controls .round { width: 64px; height: 64px; }
+.controls.single .round { width: 72px; height: 72px; }
+
+.captions {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(var(--safe-bottom) + 112px);
+  margin: 0 auto;
+  max-width: 520px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: rgba(40, 26, 18, 0.55);
+  color: #fff;
+  font-size: 16px;
+  line-height: 1.35;
+  text-align: center;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.captions.user { background: rgba(255, 255, 255, 0.55); color: var(--ink); }
+
+.selfview {
+  position: absolute;
+  z-index: 4;
+  top: calc(var(--safe-top) + 14px);
+  right: 14px;
+  width: 96px;
+  height: 136px;
+  border-radius: 14px;
+  object-fit: cover;
+  transform: scaleX(-1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+.selfview.visible { opacity: 1; }
+
+/* ---------- Ended ---------- */
+.ended { z-index: 5; animation: fadein 0.3s ease; }
+.ended .avatar { filter: saturate(0.7); }
+@keyframes fadein { from { opacity: 0; } }
+
+/* ---------- Login ---------- */
+.login input {
+  margin-top: 28px;
+  width: min(320px, 100%);
+  padding: 14px 18px;
+  border-radius: 16px;
+  border: 0;
+  font-size: 18px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.pill {
+  margin-top: 18px;
+  padding: 12px 28px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--ink);
+  color: #fff;
+  font-size: 17px;
+}
+.pill:disabled { opacity: 0.5; }
+.pill.small { margin: 0; padding: 6px 14px; font-size: 14px; }
+
+/* ---------- Admin pages (/voices, /memories) ---------- */
+.admin {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: calc(var(--safe-top) + 24px) 16px 48px;
+  line-height: 1.5;
+  min-height: 100%;
+  background: #fbf5ee;
+}
+.admin h1 { font-size: 28px; }
+.admin code { background: #f0e4d6; padding: 1px 5px; border-radius: 5px; }
+.admin textarea, .admin input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e2cfbd;
+  font: inherit;
+  background: #fff;
+}
+.admin .row { display: flex; gap: 8px; align-items: center; margin: 16px 0; }
+.voice-list, .mem-list { list-style: none; padding: 0; }
+.voice-list li, .mem-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #eadccd;
+}
+.mem-list li span { flex: 1; }
+.mem-list small { color: var(--ink-soft); white-space: nowrap; }
+.voice-list em { color: var(--green); font-style: normal; font-size: 13px; }
+.link { background: none; border: 0; color: #b0442f; padding: 0; }
+
+/* ---------- /preview test bench ---------- */
+.preview-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--safe-bottom) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  padding: 0 16px;
+}
+.preview-bar > div { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.pill.ghost { background: rgba(255, 255, 255, 0.6); color: var(--ink); }
