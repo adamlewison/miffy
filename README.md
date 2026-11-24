@@ -79,31 +79,53 @@ The ears are damped springs that lag behind the head and the body's vertical mov
 
 The frame rate is capped at 30 fps on touch devices.
 
-### The 3D model (Phase 1: do next, in Blender)
-Until a real model exists, `ProceduralBunny.tsx` draws a placeholder bunny from simple shapes in code, using the same rig.
+### The 3D model (Phase 1)
+Oney is built **procedurally in Blender** from the reference photos by `blender/build_oney.py`, so she can be rebuilt and tweaked at any time:
 
-**To swap in the real bunny, put `bunny.glb` in `public/`.** It's detected automatically. If it fails to load, the app falls back to the placeholder.
+```bash
+python3 -m venv .bvenv && .bvenv/bin/pip install bpy     # Blender as a Python module (headless)
+.bvenv/bin/python blender/build_oney.py --out public/bunny.glb --renders /tmp/oney   # ~3 min, includes the AO bake
+```
 
-The GLB should:
-- be under 5 MB, Draco-compressed, with about 30–50k triangles
-- stand upright on the origin, facing **+Y up, front toward the camera** (glTF export from Blender handles this). Size doesn't matter, because it's normalised to the same height.
-- have these bones, matched by name (aliases in `BONE_NAMES` in `rig.ts`):
+The script models her as sewn plush panels:
+- **Head:** egg-shaped, with a centre seam, a wing-shaped cream muzzle, a big mustard triangle nose, a stitched mouth, and embroidered eyes with highlights.
+- **Ears:** long lop ears that twist and cup around the head, tan outside with a beige lining and cream piping.
+- **Body:** a squat pear-shaped body with a cream tummy and chest fold.
+- **Limbs:** arms with cream paw tips and stitches, and big feet with cream soles and toe stitches.
+- **Tail:** a cream pom-pom.
 
-  | Bone | Notes |
-  | --- | --- |
-  | `root` | whole toy (hop, spin, sway) |
-  | `body` | breathing and squish (scaled) |
-  | `head` | child of body |
-  | `jaw` | lower face / cheeks (scaled when talking) |
-  | `ear_L_1`, `ear_L_2` | ear base → tip; 2 is a child of 1 |
-  | `ear_R_1`, `ear_R_2` | same, right side |
-  | `arm_L`, `arm_R` | |
+It then:
+- bakes ambient occlusion into vertex colours, writes a per-vertex fur-length mask (`_furlen`) so the face and patches stay crisp, and rigs everything to the bones below
+- exports `public/bunny.glb` (about 3 MB)
+- with `--renders`, writes Cycles previews from the same angles as the photos
 
-  Bone axes follow Blender's convention, with local +Y running along the bone. If the right ear splays the wrong way, pass `earZSign: -1` in `GlbBunny.tsx`.
+**Fur** is rendered live in the browser by `src/components/bunny/fur.ts` using shell texturing:
+- Every fabric part is redrawn 10 times on phones and 20 on desktop, each layer pushed slightly further out along the surface.
+- Strands are cut out of 3D cell noise on the rest-pose surface, so they move with her.
+- Strands taper, lean in random directions and vary in length; roots are darker, tips lighter, and a soft rim glow gives the fuzzy halo.
+- Strand edges are anti-aliased with alpha-to-coverage.
 
-Check the result at `/preview`. Missing bones are logged in the browser console during development.
+Override the layer count with `?shells=N`. Fur lengths and densities per material are in `FUR_PROFILES`.
 
-The fur look comes from `addFuzzRim` in `materials.ts`, a soft rim-light shader that's applied automatically to the GLB's materials.
+`/preview` shows every state and gesture without a call:
+- `?view=face` or `?view=side` changes the camera.
+- `?hold=1` keeps gestures on so you can inspect them.
+
+If `public/bunny.glb` is missing or fails to load, the app falls back to the simple shapes-in-code bunny (`ProceduralBunny.tsx`).
+
+Bones (matched by name, aliases in `BONE_NAMES` in `rig.ts`). Each bone's local axes are world-aligned (in Blender, every bone points straight up with roll 0), so the same animation code drives both bunnies:
+
+| Bone | Notes |
+| --- | --- |
+| `root` | whole toy (hop, spin, sway) |
+| `body` | breathing and squish (scaled) |
+| `head` | child of body |
+| `jaw` | lower face / cheeks (scaled when talking) |
+| `ear_L_1`, `ear_L_2` | ear root → middle; 2 is a child of 1 |
+| `ear_R_1`, `ear_R_2` | same, right side |
+| `arm_L`, `arm_R` | shoulders |
+
+Model-specific animation settings live in `GlbBunny.tsx`: the lop-ear direction and amount, and the arm poses for wave, sad and nuzzle, which were solved for her proportions.
 
 ## Privacy and safety
 - The passcode lock (`src/proxy.ts`) covers every page and API route. Cookies are HMAC-signed, and changing the passcode logs every device out.
@@ -127,8 +149,9 @@ src/
     CallApp.tsx              FaceTime-style UI
     bunny/BunnyScene.tsx     canvas, lights, framing, fps cap, GLB detection
     bunny/rig.ts             all procedural animation
-    bunny/ProceduralBunny.tsx placeholder bunny
-    bunny/GlbBunny.tsx       Blender model loader
+    bunny/ProceduralBunny.tsx fallback bunny (simple shapes)
+    bunny/GlbBunny.tsx       loads public/bunny.glb, fur + lop-ear rig settings
+    bunny/fur.ts             shell-texture plush fur shader
     bunny/materials.ts       terry-cloth material + fuzz rim
   lib/
     useBunnyCall.ts          Realtime session, tools, events, camera frames
@@ -137,6 +160,7 @@ src/
     sounds.ts                synthesised ringback / pickup / hang-up
 db/schema.sql
 scripts/make-icons.mjs       regenerates PWA icons from scripts/bunny-face.svg
+blender/build_oney.py        builds public/bunny.glb (Oney's 3D model) from code
 ```
 
 ## Optional: the bunny can see her

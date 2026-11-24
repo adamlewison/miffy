@@ -22,6 +22,8 @@ function fakeSpeech() {
 export default function Preview() {
   const [mode, setM] = useState<Mode>("idle");
   const [live, setLive] = useState(true);
+  // ?hold=1 keeps gestures on for a minute (for screenshots / tuning).
+  const [hold] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("hold"));
 
   useEffect(() => {
     bunnyState.live = live;
@@ -57,7 +59,7 @@ export default function Preview() {
             </button>
           ))}
           {gestures.map((g) => (
-            <button key={g} className="pill small ghost" onClick={() => triggerGesture(g)}>
+            <button key={g} className="pill small ghost" onClick={() => triggerGesture(g, hold ? 60 : undefined)}>
               {g}
             </button>
           ))}

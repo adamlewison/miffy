@@ -6,6 +6,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { ContactShadows, Environment, Lightformer } from "@react-three/drei";
 import { ProceduralBunny } from "./ProceduralBunny";
 import { BUNNY_GLB, GlbBunny } from "./GlbBunny";
+import { FUR_LAYER } from "./fur";
 
 /** Keep the bunny framed on any screen shape (portrait phones especially). */
 function Framing() {
@@ -17,11 +18,22 @@ function Framing() {
     // Fit ~2.4 units tall (ears included) and ~1.45 wide, whichever needs more distance.
     const dist = Math.max(1.22 / halfTan, 0.78 / (halfTan * aspect));
     const cam = camera as THREE.PerspectiveCamera;
+    cam.layers.enable(FUR_LAYER); // fur shells (excluded from the contact-shadow pass)
     cam.fov = fov;
     // Portrait: sit the bunny a bit lower so captions/controls don't cover the face.
     const y = aspect < 0.8 ? 1.0 : 1.08;
-    cam.position.set(0, y + 0.1, dist);
-    cam.lookAt(0, y, 0);
+    const view = new URLSearchParams(window.location.search).get("view");
+    if (view === "face") {
+      // Close-up for checking the face (used by /preview?view=face).
+      cam.position.set(0, 1.25, 1.55);
+      cam.lookAt(0, 1.18, 0);
+    } else if (view === "side") {
+      cam.position.set(dist * 0.75, y + 0.15, dist * 0.66);
+      cam.lookAt(0, y - 0.05, 0);
+    } else {
+      cam.position.set(0, y + 0.1, dist);
+      cam.lookAt(0, y, 0);
+    }
     cam.updateProjectionMatrix();
   }, [camera, size]);
   return null;
@@ -79,7 +91,7 @@ export default function BunnyScene() {
   return (
     <Canvas
       frameloop="demand"
-      dpr={[1, 2]}
+      dpr={[1, fps < 60 ? 1.75 : 2]}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
       camera={{ fov: 32, near: 0.1, far: 50, position: [0, 1, 4.5] }}
       style={{ position: "absolute", inset: 0 }}
@@ -88,8 +100,8 @@ export default function BunnyScene() {
       <FrameLimiter fps={fps} />
 
       {/* Warm studio: soft key from upper-left, fill, and a back rim to catch the fuzz. */}
-      <hemisphereLight args={["#fff3e4", "#b48a66", 0.55]} />
-      <directionalLight position={[-2.2, 3.2, 3]} intensity={1.6} color="#ffe6c9" />
+      <hemisphereLight args={["#f7f2ec", "#9c8b7b", 0.6]} />
+      <directionalLight position={[-2.2, 3.2, 3]} intensity={1.55} color="#fff1e2" />
       <directionalLight position={[2.5, 1.5, 2]} intensity={0.45} color="#ffeedd" />
       <directionalLight position={[0, 2.5, -3]} intensity={1.1} color="#fff6ea" />
       <Environment resolution={64} frames={1}>

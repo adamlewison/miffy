@@ -59,11 +59,32 @@ function stepSpring(s: Spring, target: number, k: number, c: number, force: numb
 
 const easeInOut = (x: number) => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
 
+/** Arm poses for the held gestures: [rotX, rotZ (mirrored per side), stretch]. */
+export type Poses = {
+  wave: [number, number, number];
+  sad: [number, number, number];
+  nuzzle: [number, number, number];
+};
+
 export type RigOptions = {
   /** Flip if a GLB's right ear splays the wrong way. */
   earZSign?: number;
+  /** Flip forward/back ear motion (hanging lop ears move the opposite way to upright ears). */
+  earXSign?: number;
+  /** Scale of ear pose targets (long lop ears need smaller angles). */
+  earAmount?: number;
   /** Overall movement scale (GLB might want less). */
   intensity?: number;
+  /** How far "sad" swings the ears inward (upright ears flop right down; long lop ears only a little). */
+  earSad?: number;
+  /** Gesture arm poses tuned to the model's proportions. */
+  poses?: Partial<Poses>;
+};
+
+const DEFAULT_POSES: Poses = {
+  wave: [-2.85, 0.22, 1.35],
+  sad: [-2.5, -0.72, 1.8],
+  nuzzle: [-1.35, -0.55, 1],
 };
 
 /**
@@ -75,6 +96,10 @@ export type RigOptions = {
  */
 export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}) {
   const earZSign = opts.earZSign ?? 1;
+  const earXSign = opts.earXSign ?? 1;
+  const earAmt = opts.earAmount ?? 1;
+  const earSad = opts.earSad ?? 0.75;
+  const poses: Poses = { ...DEFAULT_POSES, ...opts.poses };
   const I = opts.intensity ?? 1;
   const rest = useRef(new Map<THREE.Object3D, Rest>());
   const buf = useRef<Uint8Array<ArrayBuffer> | null>(null);
@@ -281,8 +306,8 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       // Positive lift pulls ears upright (less splay), droop lets one fall.
       // Sad: both ears flop right down. Nuzzle: ears relax back.
       const lift = s.earLift * (1 - gw.sad) - gw.sad * 0.2;
-      const restZ = -lift * 0.6 + droop * (1 - gw.sad) + gw.sad * 0.75 + gw.nuzzle * 0.25;
-      const restX = -lift * 0.25 + droop * 0.3 - gw.nuzzle * 0.35 + gw.sad * 0.25;
+      const restZ = (-lift * 0.6 + droop * (1 - gw.sad) + gw.sad * earSad + gw.nuzzle * 0.25) * earAmt;
+      const restX = (-lift * 0.25 + droop * 0.3 - gw.nuzzle * 0.35 + gw.sad * 0.25) * earAmt;
       const ax1 = stepSpring(sp.x1, restX, 140, 7, fx, dt);
       stepSpring(sp.x2, restX * 0.6, 110, 5, -ax1 * 0.35 + fx * 0.4, dt);
       const az1 = stepSpring(sp.z1, restZ, 120, 6, fz, dt);
@@ -291,12 +316,12 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       const zs = side * earZSign;
       if (n1) {
         const r = rest.current.get(n1)!;
-        _e.set(sp.x1.a * I, 0, -sp.z1.a * zs * I);
+        _e.set(sp.x1.a * earXSign * I, 0, -sp.z1.a * zs * I);
         n1.quaternion.copy(r.q).multiply(_q.setFromEuler(_e));
       }
       if (n2) {
         const r = rest.current.get(n2)!;
-        _e.set(sp.x2.a * I, 0, -sp.z2.a * zs * I);
+        _e.set(sp.x2.a * earXSign * I, 0, -sp.z2.a * zs * I);
         n2.quaternion.copy(r.q).multiply(_q.setFromEuler(_e));
       }
     };
@@ -314,18 +339,20 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       // Wave (left paw only): paw up right beside the face, little side-to-side waves.
       let stretch = 1;
       if (side === 1 && gw.wave > 0.001) {
-        ax = lerp(ax, -2.85, gw.wave);
-        az = lerp(az, 0.22 + 0.28 * Math.sin(t * 10.5), gw.wave);
-        stretch = lerp(stretch, 1.35, gw.wave);
+        ax = lerp(ax, poses.wave[0], gw.wave);
+        az = lerp(az, poses.wave[1] + 0.28 * Math.sin(t * 10.5), gw.wave);
+        stretch = lerp(stretch, poses.wave[2], gw.wave);
       }
       // Sad: both paws come up to cover the face (soft plush arms stretch a little).
-      ax = lerp(ax, -2.5, gw.sad);
-      az = lerp(az, -0.72 * side, gw.sad);
-      stretch = lerp(stretch, 1.8, gw.sad);
+      ax = lerp(ax, poses.sad[0], gw.sad);
+      az = lerp(az, poses.sad[1] * side, gw.sad);
+      stretch = lerp(stretch, poses.sad[2], gw.sad);
       // Nuzzle: arms come forward and in, like a cuddle.
-      ax = lerp(ax, -1.35 + 0.08 * rub, gw.nuzzle);
-      az = lerp(az, -0.55 * side, gw.nuzzle);
-      _e.set(ax * I, 0, az * I);
+      ax = lerp(ax, poses.nuzzle[0] + 0.08 * rub, gw.nuzzle);
+      az = lerp(az, poses.nuzzle[1] * side, gw.nuzzle);
+      stretch = lerp(stretch, poses.nuzzle[2], gw.nuzzle);
+      // Pose angles are absolute; only idle motion is scaled by intensity.
+      _e.set(ax, 0, az);
       n.quaternion.copy(r.q).multiply(_q.setFromEuler(_e));
       n.scale.set(r.s.x, r.s.y * stretch, r.s.z);
     };

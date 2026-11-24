@@ -1,14 +1,14 @@
 "use client";
 
 import * as THREE from "three";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useGLTF } from "@react-three/drei";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { BONE_NAMES, useBunnyAnimator, type Rig } from "./rig";
-import { addFuzzRim } from "./materials";
+import { applyFur } from "./fur";
 
 export const BUNNY_GLB = "/bunny.glb";
-const TARGET_HEIGHT = 1.55;
+const TARGET_HEIGHT = 1.42;
 
 /**
  * The real bunny from Blender (Phase 1). Drop a Draco-compressed bunny.glb
@@ -16,7 +16,7 @@ const TARGET_HEIGHT = 1.55;
  * BONE_NAMES in rig.ts. If the right ear splays the wrong way, flip earZSign.
  */
 export function GlbBunny({ url = BUNNY_GLB }: { url?: string }) {
-  const gltf = useGLTF(url, true);
+  const gltf = useGLTF(url);
 
   const { scene, rig, scale, offset } = useMemo(() => {
     const scene = skeletonClone(gltf.scene) as THREE.Group;
@@ -25,8 +25,6 @@ export function GlbBunny({ url = BUNNY_GLB }: { url?: string }) {
       lower.set(o.name.toLowerCase(), o);
       const mesh = o as THREE.Mesh;
       if (mesh.isMesh) {
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        mats.forEach((m) => addFuzzRim(m));
         mesh.frustumCulled = false; // skinned bounds can be wrong
       }
     });
@@ -52,7 +50,22 @@ export function GlbBunny({ url = BUNNY_GLB }: { url?: string }) {
     return { scene, rig, scale, offset };
   }, [gltf.scene]);
 
-  useBunnyAnimator(() => rig, { intensity: 0.9 });
+  // Plush fur (shell rendering) on every fabric part.
+  useEffect(() => applyFur(scene), [scene]);
+
+  // Long lop ears hang down: motion directions flip and angles are smaller.
+  // Arm poses solved for Oney's proportions (blender/build_oney.py).
+  useBunnyAnimator(() => rig, {
+    intensity: 1,
+    earXSign: -1,
+    earAmount: 0.45,
+    earSad: 0.2,
+    poses: {
+      wave: [-2.22, 0.28, 1.0],
+      sad: [-1.94, -0.4, 1.0],
+      nuzzle: [-0.76, -0.22, 1.0],
+    },
+  });
 
   return (
     <group position={offset} scale={scale}>
