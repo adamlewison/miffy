@@ -335,7 +335,7 @@ export function useBunnyCall() {
           content: [
             {
               type: "input_text",
-              text: `${info.ownerName} just called you and you picked up. Silently call get_time_of_day first (don't mention it), then greet her warmly and happily in one or two short sentences. (You're already waving hello.)`,
+              text: `${info.ownerName} just called you and you picked up. Silently call get_time_of_day first (don't mention it), then greet her like a super excited little toddler, in one or two tiny sentences — toddler words, no "good morning/evening". (You're already waving hello.)`,
             },
           ],
         },

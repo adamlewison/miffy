@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   if (!VOICES.includes(voice)) return new Response("unknown voice", { status: 400 });
   const text =
     req.nextUrl.searchParams.get("text")?.slice(0, 300) ||
-    `Hello ${bunny.ownerName}! It's me, ${bunny.name}. I've been waiting all day for you to call. Did you have a nice day?`;
+    `${bunny.ownerName}yyy! It's me, ${bunny.name}! I been waiting and waiting all da day! And... and den I did a big hop! I wuv you a hundred much! Heehee!`;
 
   const res = await fetch(`${OPENAI_BASE}/audio/speech`, {
     method: "POST",
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       model: "gpt-4o-mini-tts",
       voice,
       input: text,
-      instructions: `You are a small plush toy bunny. ${bunny.voiceStyle}`,
+      instructions: `You are a tiny bunny who is a three-year-old little girl. ${bunny.voiceStyle} Pronounce it exactly as written, like a toddler.`,
       response_format: "mp3",
     }),
   });
