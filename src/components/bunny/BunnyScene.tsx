@@ -1,45 +1,106 @@
 "use client";
 
-import type * as THREE from "three";
-import { Component, Suspense, useEffect, useState, type ReactNode } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import * as THREE from "three";
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Environment, Lightformer } from "@react-three/drei";
 import { ProceduralBunny } from "./ProceduralBunny";
 import { BUNNY_GLB, GlbBunny } from "./GlbBunny";
 import { FUR_LAYER } from "./fur";
 
-/** Keep the bunny framed on any screen shape (portrait phones especially). */
-function Framing() {
-  const { camera, size } = useThree();
-  useEffect(() => {
+/**
+ * Camera framing. The call uses a FaceTime-style shot: her head, shoulders and
+ * upper tummy, with a little headroom for her ears and hops, and a gentle
+ * handheld drift. The full-body views stay available for /preview.
+ */
+type Shot = { pos: THREE.Vector3; look: THREE.Vector3 };
+
+function useShot(): Shot {
+  const { size } = useThree();
+  return useMemo(() => {
     const aspect = size.width / size.height;
     const fov = 32;
     const halfTan = Math.tan((fov * Math.PI) / 360);
-    // Fit ~2.4 units tall (ears included) and ~1.45 wide, whichever needs more distance.
-    const dist = Math.max(1.22 / halfTan, 0.78 / (halfTan * aspect));
+    const view = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("view");
+    const shot = (pos: [number, number, number], look: [number, number, number]) => ({ pos: new THREE.Vector3(...pos), look: new THREE.Vector3(...look) });
+    if (view === "face") return shot([0, 1.25, 1.55], [0, 1.18, 0]);
+    if (view === "paw") return shot([0.75, 0.75, 1.35], [0.2, 0.55, 0.15]);
+    if (view === "full" || view === "side") {
+      // Whole toy: fit ~2.4 units tall (ears included) and ~1.45 wide.
+      const dist = Math.max(1.22 / halfTan, 0.78 / (halfTan * aspect));
+      const y = aspect < 0.8 ? 1.0 : 1.08;
+      if (view === "side") return shot([dist * 0.75, y + 0.15, dist * 0.66], [0, y - 0.05, 0]);
+      return shot([0, y + 0.1, dist], [0, y, 0]);
+    }
+    // FaceTime: from mid-tummy (~0.4) to a bit above her ear tops (~1.55). On wide
+    // screens fit her shoulders-and-ears width instead, so she never looks tiny.
+    // Phones (portrait) fit her head and ears across; tall screens then show a little more of her.
+    const halfVis = aspect < 1 ? Math.max(0.72, 0.42 / aspect) : Math.max(0.6, 0.72 / aspect);
+    const dist = halfVis / halfTan;
+    const bottom = 0.32 - Math.min(0.14, (halfVis - 0.6) * 0.45);
+    const cy = bottom + halfVis;
+    // The phone sits just below her eye line, looking very slightly up at her.
+    return shot([0, cy - 0.04, dist], [0, cy, 0]);
+  }, [size]);
+}
+
+function Framing({ shot }: { shot: Shot }) {
+  const { camera } = useThree();
+  useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
     cam.layers.enable(FUR_LAYER); // fur shells (excluded from the contact-shadow pass)
-    cam.fov = fov;
-    // Portrait: sit the bunny a bit lower so captions/controls don't cover the face.
-    const y = aspect < 0.8 ? 1.0 : 1.08;
-    const view = new URLSearchParams(window.location.search).get("view");
-    if (view === "face") {
-      // Close-up for checking the face (used by /preview?view=face).
-      cam.position.set(0, 1.25, 1.55);
-      cam.lookAt(0, 1.18, 0);
-    } else if (view === "paw") {
-      cam.position.set(0.75, 0.75, 1.35);
-      cam.lookAt(0.2, 0.55, 0.15);
-    } else if (view === "side") {
-      cam.position.set(dist * 0.75, y + 0.15, dist * 0.66);
-      cam.lookAt(0, y - 0.05, 0);
-    } else {
-      cam.position.set(0, y + 0.1, dist);
-      cam.lookAt(0, y, 0);
-    }
+    cam.fov = 32;
+    cam.position.copy(shot.pos);
+    cam.lookAt(shot.look);
     cam.updateProjectionMatrix();
-  }, [camera, size]);
+  }, [camera, shot]);
+  // A phone propped on the bed is never perfectly still: a slow, tiny drift.
+  const look = useRef(new THREE.Vector3());
+  useFrame(({ clock }) => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("view")) return;
+    const t = clock.elapsedTime;
+    camera.position.set(
+      shot.pos.x + 0.008 * Math.sin(t * 0.31) + 0.003 * Math.sin(t * 1.13),
+      shot.pos.y + 0.006 * Math.sin(t * 0.27 + 1) + 0.002 * Math.sin(t * 0.97),
+      shot.pos.z + 0.01 * Math.sin(t * 0.19),
+    );
+    look.current.copy(shot.look);
+    look.current.x += 0.004 * Math.sin(t * 0.23 + 2);
+    camera.lookAt(look.current);
+  });
   return null;
+}
+
+/** Her bedroom behind her, soft and out of focus like a phone camera's portrait mode. */
+function Room({ shot }: { shot: Shot }) {
+  const { size } = useThree();
+  const aspect = size.width / size.height;
+  const url = aspect < 1 ? "/room-portrait.jpg" : "/room-landscape.jpg";
+  const [tex, setTex] = useState<THREE.Texture | null>(null);
+  useEffect(() => {
+    let alive = true;
+    new THREE.TextureLoader().load(url, (t) => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      if (alive) setTex(t);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+  // A plane far behind her that fills the view (object-fit: cover), with margin for the drift.
+  const z = -2.6;
+  const dist = shot.pos.z - z;
+  const viewH = 2 * Math.tan((32 * Math.PI) / 360) * dist * 1.1;
+  const viewW = viewH * aspect;
+  const imgAspect = tex ? (tex.image as HTMLImageElement).width / (tex.image as HTMLImageElement).height : 1;
+  const [w, h] = viewW / viewH > imgAspect ? [viewW, viewW / imgAspect] : [viewH * imgAspect, viewH];
+  if (!tex) return null;
+  return (
+    <mesh position={[0, shot.look.y + 0.05, z]} renderOrder={-10}>
+      <planeGeometry args={[w, h]} />
+      <meshBasicMaterial map={tex} toneMapped={false} depthWrite={false} />
+    </mesh>
+  );
 }
 
 /** Cap the frame rate (30fps on phones) to save battery and avoid lag. */
@@ -84,6 +145,17 @@ function useHasGlb() {
   return has;
 }
 
+function Scene() {
+  const shot = useShot();
+  const room = typeof window !== "undefined" && !new URLSearchParams(window.location.search).has("view");
+  return (
+    <>
+      <Framing shot={shot} />
+      {room && <Room shot={shot} />}
+    </>
+  );
+}
+
 export default function BunnyScene() {
   const hasGlb = useHasGlb();
   const [fps, setFps] = useState(60);
@@ -99,7 +171,7 @@ export default function BunnyScene() {
       camera={{ fov: 32, near: 0.1, far: 50, position: [0, 1, 4.5] }}
       style={{ position: "absolute", inset: 0 }}
     >
-      <Framing />
+      <Scene />
       <FrameLimiter fps={fps} />
 
       {/* Warm studio: soft key from upper-left, fill, and a back rim to catch the fuzz. */}

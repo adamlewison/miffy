@@ -23,6 +23,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { RealtimeAgent, RealtimeSession, tool } from "@openai/agents/realtime";
 import { z } from "zod";
+import { VIDEO_NOTES } from "../src/lib/vision";
 
 const require = createRequire(import.meta.url);
 const { PitchShifterCore } = require("../public/pitch-shifter.worklet.js");
@@ -149,6 +150,18 @@ if (!has("no-greet")) {
   await reply();
 }
 for (const l of lines) {
+  // "[video] smile" simulates what the camera sees (same notes the app sends).
+  const v = l.match(/^\[video\]\s*(\w+)/);
+  if (v && v[1] in VIDEO_NOTES) {
+    console.log(`(VIDEO: ${v[1]})`);
+    session.transport.sendEvent({
+      type: "conversation.item.create",
+      item: { type: "message", role: "system", content: [{ type: "input_text", text: `[video] ${VIDEO_NOTES[v[1] as keyof typeof VIDEO_NOTES][0]}` }] },
+    });
+    session.transport.sendEvent({ type: "response.create" });
+    await reply();
+    continue;
+  }
   console.log(`MOMMY: ${l}`);
   session.sendMessage(l);
   await reply();

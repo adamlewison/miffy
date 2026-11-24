@@ -18,6 +18,7 @@
   "dependencies": {
     "@ai-sdk/gateway": "^4.0.154",
     "@libsql/client": "^0.18.0",
+    "@mediapipe/tasks-vision": "^1.2.2",
     "@openai/agents": "^0.22.0",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.2",

@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { reactLocally, VisionWatcher, type VisionEvent } from "@/lib/vision";
 import { bunny } from "@/bunny.config";
 import { bunnyState, setMode, triggerGesture, triggerTrick, type Gesture, type Mode, type Trick } from "@/lib/bunnyState";
 
@@ -28,6 +29,43 @@ export default function Preview() {
   useEffect(() => {
     bunnyState.live = live;
   }, [live]);
+
+  // Camera test: she reacts to what she sees, exactly as on a call (minus speaking).
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [cam, setCam] = useState(false);
+  const [seen, setSeen] = useState<string[]>([]);
+  const [scores, setScores] = useState("");
+  useEffect(() => {
+    if (!cam) return;
+    let w: VisionWatcher | null = null;
+    let stream: MediaStream | null = null;
+    let alive = true;
+    const onEvent = (e: VisionEvent) => {
+      reactLocally(e);
+      console.log("[vision event]", e);
+      setSeen((xs) => [...xs.slice(-5), e]);
+    };
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } }).then(async (s) => {
+      if (!alive) return s.getTracks().forEach((t) => t.stop());
+      stream = s;
+      const v = videoRef.current!;
+      v.srcObject = s;
+      await v.play().catch(() => {});
+      w = new VisionWatcher(v, onEvent);
+      (window as unknown as { __oneyVision: VisionWatcher }).__oneyVision = w;
+      w.start().then(() => console.log("[vision] ready"), (err) => console.warn("[vision] failed", err));
+    });
+    const iv = setInterval(() => {
+      const sc = w?.logic.scores;
+      if (sc) setScores(`face ${sc.face ? "yes" : "no"} · smile ${sc.smile.toFixed(2)} · sad ${sc.sad.toFixed(2)} · hand ${sc.hand || "-"}`);
+    }, 300);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+      w?.stop();
+      stream?.getTracks().forEach((t) => t.stop());
+    };
+  }, [cam]);
   useEffect(() => {
     setMode(mode);
     bunnyState.levelOverride = mode === "talking" ? fakeSpeech : null;
@@ -63,11 +101,22 @@ export default function Preview() {
               {g}
             </button>
           ))}
+          <button className={`pill small ${cam ? "" : "ghost"}`} onClick={() => setCam((v) => !v)}>
+            camera
+          </button>
           <button className="pill small ghost" onClick={() => setLive((v) => !v)}>
             {live ? "on call" : "sleepy"}
           </button>
         </div>
       </div>
+      <video ref={videoRef} className={`selfview ${cam ? "visible" : ""}`} playsInline muted autoPlay />
+      {cam && (
+        <p className="vision-debug">
+          {scores}
+          <br />
+          {seen.join(" → ")}
+        </p>
+      )}
     </main>
   );
 }

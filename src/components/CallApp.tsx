@@ -81,6 +81,7 @@ export default function CallApp() {
       style={{ "--bg-top": bunny.scene.backgroundTop, "--bg-bottom": bunny.scene.backgroundBottom } as React.CSSProperties}
     >
       <Bokeh />
+      <div className="room-blur" aria-hidden />
 
       {/* 3D bunny. Mounted while ringing so it's loaded the moment she picks up. */}
       {showScene && (

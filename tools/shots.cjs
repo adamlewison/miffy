@@ -8,7 +8,7 @@
  *
  * Options
  *   --out PATH       file prefix (".png" or "-<action>.png" is appended)   [required]
- *   --view V         face | side | paw (default: front)
+ *   --view V         full | face | side | paw (default: the FaceTime call shot)
  *   --shells N       fur layers (default 16; use 3-6 for gestures, it renders much faster)
  *   --hold           keep gestures on (adds ?hold=1) — needed for gesture screenshots
  *   --actions LIST   comma list of /preview buttons to press, one screenshot each

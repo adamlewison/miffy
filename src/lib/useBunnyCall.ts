@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { OpenAIRealtimeWebRTC, RealtimeAgent, RealtimeSession, tool, type RealtimeItem } from "@openai/agents/realtime";
 import { z } from "zod";
 import { bunnyState, setMode, triggerGesture, triggerTrick, type Gesture, type Trick } from "./bunnyState";
+import { reactLocally, VIDEO_NOTES, VisionWatcher, type VisionEvent } from "./vision";
 import { getAudioContext, playHangup, playPickup, startRingback, unlockAudio } from "./sounds";
 
 export type CallStatus = "idle" | "ringing" | "live" | "ended" | "error";
@@ -91,6 +92,20 @@ function transcriptFrom(history: RealtimeItem[]) {
   return lines;
 }
 
+const CAMERA_PREF = "oney.camera";
+function cameraPreferred() {
+  try {
+    return localStorage.getItem(CAMERA_PREF) !== "off";
+  } catch {
+    return true;
+  }
+}
+function setCameraPreferred(on: boolean) {
+  try {
+    localStorage.setItem(CAMERA_PREF, on ? "on" : "off");
+  } catch {}
+}
+
 export function useBunnyCall() {
   const [status, setStatus] = useState<CallStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -110,13 +125,16 @@ export function useBunnyCall() {
   const lastFrameRef = useRef(0);
   const callIdRef = useRef(0);
   const thinkingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visionRef = useRef<VisionWatcher | null>(null);
+  const respondingRef = useRef(false);
+  const lastSpokenReactionRef = useRef(0);
 
   /** Send her current camera frame to the bunny (no response triggered). */
-  const sendFrame = useCallback(() => {
+  const sendFrame = useCallback((force = false) => {
     const video = videoRef.current;
     const session = sessionRef.current;
     if (!video || !session || !camRef.current || video.videoWidth === 0) return;
-    if (performance.now() - lastFrameRef.current < 4000) return;
+    if (!force && performance.now() - lastFrameRef.current < 4000) return;
     lastFrameRef.current = performance.now();
     const w = 384;
     const h = Math.round((video.videoHeight / video.videoWidth) * w);
@@ -131,6 +149,66 @@ export function useBunnyCall() {
     }
   }, []);
 
+  /** Tell the bunny what she just saw on the video (with a fresh frame), and maybe let her react out loud. */
+  const onVision = useCallback(
+    (e: VisionEvent) => {
+      reactLocally(e);
+      const session = sessionRef.current;
+      if (!session) return;
+      const [text, wantsReply] = VIDEO_NOTES[e];
+      sendFrame(true);
+      try {
+        session.transport.sendEvent({
+          type: "conversation.item.create",
+          item: { type: "message", role: "system", content: [{ type: "input_text", text: `[video] ${text}` }] },
+        });
+        // Only speak up if nobody is talking; otherwise this just colours her next reply.
+        const quietFor = e === "smile" ? 40_000 : e === "sad" ? 0 : 6_000;
+        const now = Date.now();
+        if (wantsReply && !respondingRef.current && bunnyState.mode === "idle" && now - lastSpokenReactionRef.current > quietFor) {
+          lastSpokenReactionRef.current = now;
+          session.transport.sendEvent({ type: "response.create" });
+        }
+      } catch (err) {
+        console.warn("[vision note]", err);
+      }
+    },
+    [sendFrame],
+  );
+
+  const stopCamera = useCallback(() => {
+    visionRef.current?.stop();
+    visionRef.current = null;
+    camRef.current?.getTracks().forEach((t) => t.stop());
+    camRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraOn(false);
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    if (camRef.current) return;
+    try {
+      const cam = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      });
+      camRef.current = cam;
+      setCameraOn(true);
+      const video = videoRef.current;
+      if (!video) return;
+      video.srcObject = cam;
+      await video.play().catch(() => {});
+      lastFrameRef.current = 0;
+      setTimeout(() => sendFrame(), 800);
+      const w = new VisionWatcher(video, onVision);
+      visionRef.current = w;
+      w.start().catch((err) => console.warn("[vision] unavailable", err));
+      if (new URLSearchParams(window.location.search).has("debug")) (window as unknown as { __oneyVision: VisionWatcher }).__oneyVision = w;
+    } catch (e) {
+      console.warn("camera", e);
+    }
+  }, [sendFrame, onVision]);
+
   const cleanup = useCallback(() => {
     stopRingRef.current?.();
     stopRingRef.current = null;
@@ -140,10 +218,8 @@ export function useBunnyCall() {
     sessionRef.current = null;
     micRef.current?.getTracks().forEach((t) => t.stop());
     micRef.current = null;
-    camRef.current?.getTracks().forEach((t) => t.stop());
-    camRef.current = null;
-    if (videoRef.current) videoRef.current.srcObject = null;
-    setCameraOn(false);
+    stopCamera();
+    respondingRef.current = false;
     voiceNodesRef.current.forEach((n) => n.disconnect());
     voiceNodesRef.current = [];
     if (audioElRef.current) {
@@ -155,7 +231,7 @@ export function useBunnyCall() {
     setMode("idle");
     setMuted(false);
     setCaptions(null);
-  }, []);
+  }, [stopCamera]);
 
   const end = useCallback(
     (reason?: string) => {
@@ -287,6 +363,12 @@ export function useBunnyCall() {
               if (bunnyState.mode === "thinking") setMode("idle");
             }, 7000);
             break;
+          case "response.created":
+            respondingRef.current = true;
+            break;
+          case "response.done":
+            respondingRef.current = false;
+            break;
           case "output_audio_buffer.started":
             setMode("talking");
             break;
@@ -341,6 +423,9 @@ export function useBunnyCall() {
         },
       });
       session.transport.sendEvent({ type: "response.create" });
+
+      // A video call, like FaceTime: the camera comes on unless she turned it off last time.
+      if (cameraPreferred()) startCamera();
     } catch (err) {
       if (cancelled()) return;
       console.error(err);
@@ -354,7 +439,7 @@ export function useBunnyCall() {
       setError(msg);
       setStatus("error");
     }
-  }, [cleanup, sendFrame]);
+  }, [cleanup, sendFrame, startCamera]);
 
   const toggleMute = useCallback(() => {
     const s = sessionRef.current;
@@ -366,32 +451,13 @@ export function useBunnyCall() {
 
   const toggleCamera = useCallback(async () => {
     if (camRef.current) {
-      camRef.current.getTracks().forEach((t) => t.stop());
-      camRef.current = null;
-      if (videoRef.current) videoRef.current.srcObject = null;
-      setCameraOn(false);
+      stopCamera();
+      setCameraPreferred(false);
       return;
     }
-    try {
-      const cam = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      });
-      camRef.current = cam;
-      setCameraOn(true);
-      // The <video> mounts after state change; attach on next tick.
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = cam;
-          videoRef.current.play().catch(() => {});
-          lastFrameRef.current = 0;
-          setTimeout(sendFrame, 800);
-        }
-      }, 0);
-    } catch (e) {
-      console.warn("camera", e);
-    }
-  }, [sendFrame]);
+    setCameraPreferred(true);
+    await startCamera();
+  }, [stopCamera, startCamera]);
 
   // Hard cap on call length, to keep costs predictable.
   useEffect(() => {

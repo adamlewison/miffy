@@ -2,7 +2,7 @@
 
 **This file is the single source of truth for this repo.** `CLAUDE.md` and `README.md` just point here. When you change how something works, update this file in the same commit.
 
-A private web app built by Adam for his wife. She opens it on her phone, taps **Call**, and her real plush bunny, **Oney**, picks up as a 3D bunny on a FaceTime-style call. Oney talks back in a little girl's voice, moves (waves, nuzzles, gets sad, hops), and remembers things between calls.
+A private web app built by Adam for his wife. She opens it on her phone, taps **Call**, and her real plush bunny, **Oney**, picks up as a 3D bunny on a FaceTime-style video call, sitting on the bed in her bedroom. Oney talks back in a little girl's voice, moves (waves, nuzzles, gets sad, hops), **reacts to Mommy on the video** (gets excited to see her, waves back, giggles at smiles, comforts her when she looks sad), and remembers things between calls.
 
 - Live: **https://miffy-mu.vercel.app** (passcode-locked; ask Adam for the passcode)
 - Repo: `adamlewison/miffy`. **Pushing to `main` auto-deploys to Vercel.**
@@ -21,6 +21,7 @@ Every change to voice, prompt or personality must keep this true:
 - **Grammar:** "I runned", "me so happy", "bestest", and she calls herself "One-y".
 - **Sentence structure:** tiny sentences, "and... and... and den", repetition, sudden topic jumps, "why?" questions. **Never** grown-up phrases ("good evening", "that sounds lovely", "let me think").
 - **Body language:** wave (paw beside her face), nuzzle/cuddle, sad (head sags, paws to her face), plus hops. These go through the `express` tool and are **never narrated** ("I'm waving" is a bug).
+- **Personality:** sweet and a little bit cheeky: silly confident nonsense, jokes that don't quite work, playful fibs she gives away at once. Never naughty or mean. When Mommy is sad she's a sunny, cuddly, silly comforter, never worried or grown-up.
 
 If any line in a test transcript sounds like a grown-up, it's a bug.
 
@@ -42,7 +43,8 @@ Arms and ears never pass through her head, body, legs or each other. This is enf
 1. **Her body is code.** `blender/build_oney.py` runs Blender headless (as a Python library) and builds her from maths: each part is a smooth 3D shape sized from the photos, the parts are blended into one stuffed surface, and patches and stitches are laid on top. It also bakes soft shadows, adds a 21-bone skeleton, and exports `public/bunny.glb` plus `public/bunny.collision.json`.
 2. **Her fur is drawn live** (per-strand warm/cool colour, soft tufts of clumped length, sun-bleached tips and a warm scattered-light glow in shadow). `fur.ts` redraws each fabric part 10 times on phones and 20 on desktop, each layer pushed slightly further out and cut into strands, so she looks fluffy. The GLB itself is smooth.
 3. **Her movement is code.** `rig.ts` turns her bones every frame: breathing, springy ears, a head bob from her voice volume, and gesture poses. `collide.ts` then nudges any arm or ear out of her body.
-4. **Her voice is OpenAI Realtime.** Audio goes straight from the phone to OpenAI over WebRTC. Our server only mints a 10-minute key and builds her instructions (character sheet plus memories). Her reply audio is pitch-shifted on the phone and drives the talking animation.
+4. **She sees Mommy.** On a call the front camera comes on (like FaceTime). MediaPipe runs face and hand tracking **on the phone** (`src/lib/vision.ts`), turning smiles, frowns, waves, thumbs-ups and the I-love-you sign into events. Each event makes her body react at once and sends the voice model a short `[video]` note plus a small frame. Video is never streamed anywhere.
+5. **Her voice is OpenAI Realtime.** Audio goes straight from the phone to OpenAI over WebRTC. Our server only mints a 10-minute key and builds her instructions (character sheet plus memories). Her reply audio is pitch-shifted on the phone and drives the talking animation.
 
 ```
 phone ──WebRTC audio──▶ OpenAI Realtime            (audio never touches our server)
@@ -112,7 +114,7 @@ Always finish with: `npm run check:types`, `npm run build`, the relevant checks 
 3. `npm run model` (or `npm run model:renders` for Cycles previews; `npm run model -- --no-bake` skips the AO bake for a quicker shape check).
 4. Start the server, then screenshot and compare with the photos:
    ```bash
-   node tools/shots.cjs --out .oney-out/front
+   node tools/shots.cjs --out .oney-out/front --view full         # whole toy (the default shot is the FaceTime framing)
    node tools/shots.cjs --out .oney-out/face --view face          # also: side, paw
    python3 tools/sheet.py .oney-out/cmp.png reference/photos/front.jpg .oney-out/front.png
    python3 tools/sheet.py .oney-out/paw.png --crop 0.48,0.40,0.72,0.61 reference/photos/held-paw.jpg .oney-out/front.png
@@ -137,6 +139,12 @@ Always finish with: `npm run check:types`, `npm run build`, the relevant checks 
 1. **Character sheet:** `src/bunny.config.ts` (`speech` rules, `examples`, `family`, `personality`, `world`, `memories` (TODO lines are skipped), `voiceStyle`, `voice`, `pitchSemitones`). The prompt is assembled in `src/lib/prompt.ts`.
 2. **Test it:** start the server, then `npm run check:voice` (or `npx tsx tools/voice-test.mts --lines "...|..."`). Read every line: toddler voice? correct names? no narrated moves, no "let me…" preambles? sensible `express` and `remember_this` calls?
 3. **Name or pronunciation changes:** `npx tsx tools/voice-test.mts --lines "What's your name?|Miffy, tell Booba your name!" --audio .oney-out/voice --transcribe` should be heard as "Wunny".
+
+### C2. Change how she reacts to the camera
+1. **Detection and thresholds:** `ReactionLogic` in `src/lib/vision.ts` (hold times, cooldowns, smile/sad thresholds). **Body reactions:** `reactLocally`. **What the voice model is told:** `VIDEO_NOTES` (and whether it may speak up unprompted; `onVision` in `useBunnyCall.ts` only lets her speak when nobody is talking, with a 40 s gap for smiles).
+2. **Try it without a call:** `/preview` → **camera** button. The readout under the self-view shows live scores and the events fired.
+3. **Test it headlessly with a fake webcam:** make a `.y4m` from still photos (e.g. `ffmpeg -f concat -i list.txt -vf "scale=-2:480,crop=640:480,fps=10,format=yuv420p" test.y4m`) and launch Chromium with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream --use-file-for-fake-video-capture=test.y4m`. Use `?shells=0` so the software renderer doesn't starve the detector.
+4. **Test her spoken reactions:** `npx tsx tools/voice-test.mts --lines "[video] face_seen|[video] sad|..."` sends the same notes the app does.
 
 ### D. Change her voice or pitch
 - Audition voices at `/voices`. It has a pitch slider and plays through the same shifter.
@@ -193,7 +201,8 @@ db/schema.sql                memories table (auto-created; reference)
   - `get_time_of_day`
   - `express` (wave, nuzzle, sad, hop, wiggle, spin, ear_flick, giggle, clap, cheer, shy, sleepy)
   - `remember_this`
-- **Camera:** the camera button sends a small frame when Mommy starts speaking, at most one every 4 s.
+- **Camera (video call):** on by default when she picks up (remembered in `localStorage` `oney.camera` if Mommy turns it off). The self-view sits top-right like FaceTime. A small frame goes to the model when Mommy starts speaking (at most one every 4 s) and with every vision event.
+- **Vision reactions (`src/lib/vision.ts`):** MediaPipe Tasks Vision (`@mediapipe/tasks-vision` 1.2.2; wasm from jsDelivr, models from Google's storage, both pinned) runs a face landmarker (blendshapes) and gesture recogniser about 8 times a second, alternating, GPU with CPU fallback. Events: `face_seen` (first time, or after 20 s away) → cheer + hop; `wave` (open palm) → waves back; `smile` → giggle; `sad` (frown/brows for ~1.4 s) → nuzzle; `thumbs_up` → clap; `love` (ILY sign) → nuzzle. Each also sends a `[video]` system note (`VIDEO_NOTES`) and, if she's idle, a `response.create` so she says something about it.
 - **Hanging up:** the transcript goes to `/api/memories` with keepalive. Facts are extracted and the transcript is discarded. No audio is ever stored.
 
 ### Memory: `src/lib/memories.ts`, `src/app/api/memories/route.ts`
@@ -202,7 +211,7 @@ Turso/libSQL. The table is auto-created (`db/schema.sql` is for reference). The 
 ### Model loading and animation: `src/components/bunny/`
 | File | Role |
 | --- | --- |
-| `BunnyScene.tsx` | Canvas, lights, framing (`?view=face\|side\|paw`), fps cap (30 on touch), contact shadow, GLB detection |
+| `BunnyScene.tsx` | Canvas, lights, FaceTime framing (head, shoulders and upper tummy, fitted per screen shape) with a slow handheld drift, the blurred bedroom backdrop (`public/room-portrait.jpg` / `room-landscape.jpg`, AI-generated, unlit plane far behind her), `?view=full\|face\|side\|paw` for test shots (no room, no drift), fps cap (30 on touch), contact shadow, GLB detection |
 | `GlbBunny.tsx` | loads `bunny.glb` and `bunny.collision.json`, applies fur, per-model rig options and gesture poses |
 | `rig.ts` | all procedural animation: states, spring ears, voice-driven bob/squish/jaw, tricks, held gestures |
 | `collide.ts` | per-frame solid-body solve (head and body SDF grids, arm and ear spheres) |
@@ -260,7 +269,7 @@ A two-tap delay-line shifter: +4 semitones raises both pitch and formants (child
 | Page | Purpose |
 | --- | --- |
 | `/` | the call |
-| `/preview` | test bench (`?view=`, `?hold=1`, `?debug=1`, `?shells=`) |
+| `/preview` | test bench (`?view=`, `?hold=1`, `?debug=1`, `?shells=`), plus a **camera** button to test vision reactions |
 | `/voices` | voice and pitch audition |
 | `/live-test` | experimental: talk to Gemini Live, GPT Live/Realtime or Grok voice models through the Vercel AI Gateway, with a voice picker and the pitch shifter (favourite so far: Gemini extended-thinking, Achernar, +8). Needs a real `AI_GATEWAY_API_KEY`. The sandbox proxy blocks WebSockets, so it can only be tried from a real browser |
 | `/memories` | view and edit memories |
@@ -280,8 +289,11 @@ None of the helper pages are linked from the call UI.
 - **Her name:** "Oney" and "Wunny" spellings were tried; "One-y" is the one the voice reliably says as WUN-ee (verified with cold transcription).
 - **She narrates moves unless told not to.** Tool use must be silent, and the greeting must not say "good evening".
 - **The software renderer is slow.** Gestures need `--hold` and long waits, or screenshots catch them half-blended.
+- **Resting faces already "smile" a bit.** Blendshape `mouthSmile` sits around 0.3–0.4 on a neutral face, so a smile fires above 0.55 and re-arms below 0.45. Don't use absolute "no smile" thresholds near 0.3.
+- **Count frames, not seconds, for hand gestures.** Slow devices analyse far less often; the wave check uses the last few hand frames (within 2.5 s), not a short time window.
 
 ## 7. Open items
+- Camera reactions have only been tested with a fake webcam (synthetic photos), not on a real phone. Watch for: detection speed alongside the fur, false "sad" on a tired or neutral face (raise the 0.42 in `ReactionLogic` if so), and whether she speaks up too often (cooldowns in `vision.ts` / `onVision`).
 - `src/bunny.config.ts` still has `TODO` memories and inside jokes. Adam should fill these in; they matter most.
 - No live call has been made on a real phone yet, so phone performance with fur is untested. `GlbBunny.tsx` now drops fur layers automatically (×0.7 every 3 s while below 24 fps on phones / 40 on desktop, floor 4); `?shells=N` pins the count and disables this. If it still looks laggy, lower `defaultShellCount` in `fur.ts`.
 - `OPENAI_API_KEY` is set on Vercel (calls work). **Turso is not**: the live site reports `"backend":"memory"` at `/api/memories`, so memories vanish on every cold start. Add `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in Vercel.
