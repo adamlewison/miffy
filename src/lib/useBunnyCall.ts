@@ -12,6 +12,7 @@ type SessionInfo = {
   key: string;
   model: string;
   voice: string;
+  pitchSemitones: number;
   instructions: string;
   bunnyName: string;
   ownerName: string;
@@ -103,6 +104,7 @@ export function useBunnyCall() {
   const camRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const voiceNodesRef = useRef<AudioNode[]>([]);
   const historyRef = useRef<RealtimeItem[]>([]);
   const stopRingRef = useRef<(() => void) | null>(null);
   const lastFrameRef = useRef(0);
@@ -142,6 +144,8 @@ export function useBunnyCall() {
     camRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
     setCameraOn(false);
+    voiceNodesRef.current.forEach((n) => n.disconnect());
+    voiceNodesRef.current = [];
     if (audioElRef.current) {
       audioElRef.current.pause();
       audioElRef.current.srcObject = null;
@@ -188,7 +192,13 @@ export function useBunnyCall() {
       audioElRef.current = audioEl;
       stopRingRef.current = startRingback();
 
-      const [mic, info] = await Promise.all([
+      // Load the pitch shifter (makes the grown-up voice a little girl's) while it rings.
+      const ctx = getAudioContext();
+      const shifterReady = ctx.audioWorklet
+        ? ctx.audioWorklet.addModule("/pitch-shifter.worklet.js").then(() => true, () => false)
+        : Promise.resolve(false);
+
+      const [mic, info, canShift] = await Promise.all([
         navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
         }),
@@ -197,8 +207,13 @@ export function useBunnyCall() {
           if (!r.ok) throw new Error(j.error || "Couldn't reach the bunny.");
           return j as SessionInfo;
         }),
+        shifterReady,
         sleep(2600 + Math.random() * 1500), // let it ring a bit, like a real call
       ]);
+      const pitch = canShift ? info.pitchSemitones : 0;
+      // When shifting, Web Audio plays the voice; the <audio> element stays muted
+      // (it still has to be attached or Chrome won't deliver the remote audio).
+      audioEl.muted = pitch !== 0;
       if (cancelled()) {
         mic.getTracks().forEach((t) => t.stop());
         return;
@@ -217,12 +232,23 @@ export function useBunnyCall() {
         changePeerConnection: (pc) => {
           pc.addEventListener("track", (e) => {
             if (e.track.kind !== "audio") return;
-            const ctx = getAudioContext();
             const src = ctx.createMediaStreamSource(e.streams[0] ?? new MediaStream([e.track]));
             const analyser = ctx.createAnalyser();
             analyser.fftSize = 512;
             analyser.smoothingTimeConstant = 0.2; // we do our own ~80ms smoothing in the rig
-            src.connect(analyser); // not to destination: the <audio> element plays it
+            if (pitch !== 0) {
+              const shifter = new AudioWorkletNode(ctx, "pitch-shifter", {
+                processorOptions: { semitones: pitch },
+                outputChannelCount: [1],
+              });
+              src.connect(shifter);
+              shifter.connect(ctx.destination);
+              shifter.connect(analyser);
+              voiceNodesRef.current = [src, shifter];
+            } else {
+              src.connect(analyser); // not to destination: the <audio> element plays it
+              voiceNodesRef.current = [src];
+            }
             bunnyState.analyser = analyser;
           });
           return pc;

@@ -13,6 +13,8 @@ export const dynamic = "force-dynamic";
 export async function POST() {
   const model = process.env.REALTIME_MODEL || "gpt-realtime-2.1";
   const voice = process.env.BUNNY_VOICE || bunny.voice;
+  const envPitch = Number(process.env.BUNNY_PITCH);
+  const pitchSemitones = process.env.BUNNY_PITCH && Number.isFinite(envPitch) ? envPitch : bunny.pitchSemitones;
 
   let memories: Awaited<ReturnType<typeof listMemories>> = [];
   try {
@@ -55,6 +57,7 @@ export async function POST() {
       expiresAt: data.expires_at as number,
       model,
       voice,
+      pitchSemitones,
       instructions,
       bunnyName: bunny.name,
       ownerName: bunny.ownerName,

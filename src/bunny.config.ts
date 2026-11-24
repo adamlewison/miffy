@@ -73,12 +73,22 @@ export const bunny = {
   /**
    * Voice. Built-in realtime voices: alloy, ash, ballad, cedar, coral, echo,
    * marin, sage, shimmer, verse. Try them at /voices. Env BUNNY_VOICE overrides.
+   * Coral came out highest and most childlike when asked to talk like a little
+   * girl (measured ~280 Hz vs shimmer's ~190 Hz).
    */
-  voice: "shimmer",
+  voice: "coral",
+
+  /**
+   * The realtime voices are all grown-ups, so the phone pitch-shifts the
+   * bunny's voice up by this many semitones (pitch AND formants), which is
+   * what turns an adult voice into a small child's. 0 = off.
+   * 3 = subtle, 4 = little girl, 5-6 = squeaky toy. Env BUNNY_PITCH overrides.
+   */
+  pitchSemitones: 4,
 
   /** How the voice should sound — fed into the prompt. */
   voiceStyle:
-    "Speak softly and warmly, a little sleepy and slow, with a gentle, smiley, slightly high voice. Small giggles are allowed. Never shout.",
+    "Your voice is a little girl's, about four years old: very high-pitched, squeaky, bright and bubbly — never a grown-up woman's voice. Excited little-kid energy: giggles (\"heehee!\"), sing-song rises, stretched words (\"sooo\", \"Mommyyy!\"). When you're sleepy or sad you go small and quiet, like a tired toddler.",
 
   /** Background colours for the call screen (her home's colours). */
   scene: {

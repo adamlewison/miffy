@@ -34,7 +34,7 @@ None of the helper pages are linked from the call UI.
 ## Make it *her* bunny (do this before the reveal)
 
 1. **Edit `src/bunny.config.ts`**: the name, what she calls it, her name, its age, personality, where it lives, and **ten real memories and inside jokes**. Lines starting with `TODO` are left out of the prompt until you replace them.
-2. **Pick the voice** at `/voices`, then set `voice` in the config (or set `BUNNY_VOICE`).
+2. **Pick the voice** at `/voices`, then set `voice` in the config (or set `BUNNY_VOICE`). The built-in voices are all grown-ups, so the phone pitch-shifts the bunny's voice up (`pitchSemitones`, or the `BUNNY_PITCH` env var; default +4 = little girl). The `/voices` page has a slider that plays samples through the same shifter.
 3. **Optional photo:** add `public/bunny-photo.jpg` (square) and it replaces the drawn avatar on the contact card.
 4. **Colours:** `scene` in the config controls the background gradient and bokeh. Match them to your flat.
 5. Have about 10 test calls yourself and rewrite anything that sounds robotic. The prompt is built in `src/lib/prompt.ts`.
