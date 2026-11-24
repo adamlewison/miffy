@@ -251,7 +251,7 @@ Turso/libSQL. The table is auto-created (`db/schema.sql` is for reference). The 
   The result goes through marching cubes (voxel 5.5 mm) → decimate to about 44k tris → smooth.
 - **Arms:** flattened ellipse-section tubes (`arm_dims`: broad face forward), widening into mitten paws. The cream underside panel is a vertex-colour region (`PALM`), and the finger stitches (`paw_stitch_lines`) are `thread_tan` with the fur shortened along them.
 - **Patches** (muzzle, nose, eyes, mouth, tummy, soles, toe stitches): parametric appliqués **snapped onto the merged surface** (`on_plush`), so nothing pokes through when she moves.
-- **Ears:** separate cupped ribbons that twist from the crown, with a lining and piping.
+- **Ears:** separate ribbons (`ear_frame` centreline + `ear_profile` width/thickness). Each one lies flat over the crown and down the side of the head (3–4 cm clear, no arch), then hangs as a broad, round-ended paddle (up to ~0.31 wide) flaring gently outward. Its broad face turns from straight out (against the head) to out-and-forward lower down (`face_ref` blend). Cupping (`ear_cup_amount`) and the beige lining start only below the fold: cupping at the root made a dark "hood" that ruined the face.
 - **Skin weights:** a smooth field (`plush_weights`). An arm owns only points actually on the arm, so the face never follows an arm. Patches use the same field without arms.
 - **Fur mask:** per-vertex `_furlen` (exported as `_FURLEN`), short or zero under patches, eyes, nose and stitch creases.
 - **Colour:** `fur_tan` has a white base colour; its colour (tan, cream paw panels) times the baked AO lives in `COLOR_0`. The other materials use their base colour times AO.
@@ -286,6 +286,7 @@ None of the helper pages are linked from the call UI.
 - **React strict mode runs effects twice.** `applyFur` keeps the source material in `userData.furSource` and restores it on cleanup.
 - **The first "arm into face" bug was skin weights, not geometry.** Arm weights must require proximity to the arm surface.
 - **Long lop ears swinging inward cross her face.** `earMaxIn` clamps that. Ears are also pushed outward by arms (`collide.ts`).
+- **On the lop ears, positive ear Z in `rig.ts` swings them *inward*** (clamped by `earMaxIn`). To get the ears out of the way of raised arms (cheer, the sleepy yawn), subtract from `restZ`. Otherwise the arm squeezes the ear against her head and `check:solid` fails on `ear_L_1 vs arm sphere`.
 - **Her name:** "Oney" and "Wunny" spellings were tried; "One-y" is the one the voice reliably says as WUN-ee (verified with cold transcription).
 - **She narrates moves unless told not to.** Tool use must be silent, and the greeting must not say "good evening".
 - **The software renderer is slow.** Gestures need `--hold` and long waits, or screenshots catch them half-blended.

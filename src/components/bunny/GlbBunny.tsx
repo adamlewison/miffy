@@ -106,7 +106,7 @@ export function GlbBunny({ url = BUNNY_GLB }: { url?: string }) {
       sad: [-1.8, -0.46, 1.0],
       nuzzle: [-0.72, -0.26, 1.0],
       clap: [-0.66, -0.42, 1.0],
-      cheer: [-2.28, 0.28, 1.0],
+      cheer: [-2.2, 0.45, 1.0], // arms up and a bit wide, so the broad ears have room
     },
   });
 

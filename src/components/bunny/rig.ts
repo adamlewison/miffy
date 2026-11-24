@@ -412,6 +412,8 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       s.nextTwitch = 2.5 + Math.random() * 5;
     }
     const talkBounce = mode === "talking" ? syllable * 60 : 0;
+    // The sleepy yawn stretches both arms up beside her head (ears flop out of their way too).
+    const yawnArms = gw.sleepy * clamp(Math.sin(t * 0.9) * 1.6, 0, 1);
     const ear = (
       sp: EarSprings,
       side: 1 | -1,
@@ -426,9 +428,10 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       const fz = -headVel.z * 9 * side + headVel.y * 4 * side + flick * 60 + laugh * Math.sin(t * 26) * 90;
       // Positive lift pulls ears upright (less splay), droop lets one fall.
       // Sad: both ears flop right down. Nuzzle: ears relax back.
-      const lift = (s.earLift + fCur * 0.3) * (1 - gw.sad) - gw.sad * 0.2 + gw.cheer * 0.3;
+      const lift = (s.earLift + fCur * 0.3) * (1 - gw.sad) * (1 - gw.cheer) - gw.sad * 0.2;
+      // Cheer: arms go up beside her head, so the ears flop happily outward, out of their way.
       const sway = 0.035 * Math.sin(t * 0.63 + side * 1.9) + 0.02 * Math.sin(t * 1.37 + side);
-      const restZ = (sway - lift * 0.6 + droop * (1 - gw.sad) + gw.sad * earSad + gw.nuzzle * 0.25 + gw.sleepy * 0.2 + gw.shy * 0.15) * earAmt;
+      const restZ = (sway - lift * 0.6 + droop * (1 - gw.sad) + gw.sad * earSad + gw.nuzzle * 0.25 + gw.sleepy * 0.2 + gw.shy * 0.15 - gw.cheer * 0.7 - yawnArms * 0.7) * earAmt;
       const restX = (-lift * 0.25 + droop * 0.3 - gw.nuzzle * 0.35 + gw.sad * 0.25 + gw.sleepy * 0.2) * earAmt;
       const ax1 = stepSpring(sp.x1, restX, 140, 7, fx, dt);
       const ax2 = stepSpring(sp.x2, restX * 0.6, 110, 5, -ax1 * 0.35 + fx * 0.4, dt);
@@ -493,9 +496,8 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       az = lerp(az, (poses.cheer[1] + 0.12 * Math.sin(t * 9 + phase)) * side, gw.cheer);
       stretch = lerp(stretch, poses.cheer[2], gw.cheer);
       // Sleepy: arms slowly stretch out and up in a yawn.
-      const yawn = gw.sleepy * clamp(Math.sin(t * 0.9) * 1.6, 0, 1);
-      ax = lerp(ax, -2.2, yawn * 0.7);
-      az = lerp(az, 0.5 * side, yawn * 0.7);
+      ax = lerp(ax, -2.2, yawnArms * 0.7);
+      az = lerp(az, 0.5 * side, yawnArms * 0.7);
       // Pose angles are absolute; only idle motion is scaled by intensity.
       _e.set(ax, 0, az);
       n.quaternion.copy(r.q).multiply(_q.setFromEuler(_e));

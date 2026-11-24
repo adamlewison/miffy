@@ -531,27 +531,32 @@ def foot(side):
 
 
 def ear_frame(side):
+    # Lies against the top and side of the head (no arch over the crown), then hangs
+    # and flares gently outward below the cheek, like the real toy's lop ears.
     ctrl = np.array(
         [
-            [0.11, 1.3, -0.045],
-            [0.215, 1.325, -0.03],
-            [0.31, 1.24, -0.005],
-            [0.37, 1.04, 0.015],
-            [0.418, 0.78, 0.015],
-            [0.428, 0.52, 0.015],
-            [0.418, 0.36, 0.015],
+            [0.1, 1.315, -0.04],
+            [0.195, 1.31, -0.03],
+            [0.295, 1.225, -0.015],
+            [0.355, 1.06, 0.0],
+            [0.395, 0.84, 0.01],
+            [0.465, 0.6, 0.01],
+            [0.48, 0.42, 0.01],
         ]
     )
     ctrl[:, 0] *= side
     n = 64
     C, ts, _ = catmull_rom(ctrl, n)
     T = norm(np.gradient(C, axis=0))
-    # The ear lies over the crown (outer face up) then twists as it falls so
-    # its outer face looks out and forward, like the real toy.
+    # The ear lies over the crown (outer face up), turns to face straight out where it
+    # lies flat along the side of the head, then twists so its broad outer face looks
+    # out and forward lower down, like the real toy.
     up = np.array([0.35 * side, 0.94, 0.0])
-    out = np.array([0.86 * side, 0.0, 0.5])
-    k = sstep(0.06, 0.34, ts)[:, None]
-    face_ref = norm(up * (1 - k) + out * k)
+    side_out = np.array([1.0 * side, 0.0, 0.12])
+    fwd_out = np.array([0.74 * side, 0.0, 0.67])
+    k1 = sstep(0.06, 0.3, ts)[:, None]
+    k2 = sstep(0.45, 0.75, ts)[:, None]
+    face_ref = norm(up * (1 - k1) + (side_out * (1 - k2) + fwd_out * k2) * k1)
     W = norm(np.cross(T, face_ref))
     N = norm(np.cross(W, T))
     N = N * np.sign(np.sum(N * face_ref, axis=1, keepdims=True))
@@ -559,14 +564,20 @@ def ear_frame(side):
     return C, ts, T, W, N
 
 
-EAR_CUP = 0.055  # the ear is cupped around the head: edges curl inward
+EAR_CUP = 0.04  # the ear is gently cupped: edges curl inward (not at the root fold)
+
+
+def ear_cup_amount(ts):
+    """No cupping where the ear folds over the crown (that read as a dark hood), full cup lower down."""
+    return sstep(0.22, 0.5, ts)
 
 
 def ear_profile(ts):
-    width = 0.1 + 0.14 * np.sin(np.clip(ts / 0.6, 0, 1) * np.pi / 2)
-    thick = 0.042 * (1 - 0.4 * ts) + 0.006
-    tip = np.where(ts > 0.84, np.sqrt(np.clip(1 - ((ts - 0.84) / 0.16) ** 2, 0, 1)), 1.0)
-    return width * np.maximum(tip, 0.0), thick * np.maximum(tip, 0.0) ** 0.7
+    """Broad, soft paddles: narrow at the fold on the crown, widest low down, with a round end."""
+    width = 0.11 + 0.2 * sstep(0.08, 0.72, ts)
+    thick = 0.04 * (1 - 0.35 * ts) + 0.006
+    tip = np.where(ts > 0.76, np.sqrt(np.clip(1 - ((ts - 0.76) / 0.24) ** 2, 0, 1)), 1.0)
+    return width * np.maximum(tip, 0.0) ** 0.85, thick * np.maximum(tip, 0.0) ** 0.6
 
 
 def ear_mesh(side, segs=28):
@@ -579,7 +590,7 @@ def ear_mesh(side, segs=28):
             c, s = math.cos(p), math.sin(p)
             lat = 0.5 * width[i] * math.copysign(abs(c) ** 0.6, c)
             nrm = 0.5 * thick[i] * math.copysign(abs(s) ** 0.75, s)
-            cup = -EAR_CUP * (lat / max(0.5 * width[i], 1e-4)) ** 2 * min(1.0, ts[i] / 0.25)
+            cup = -EAR_CUP * (lat / max(0.5 * width[i], 1e-4)) ** 2 * ear_cup_amount(ts[i])
             V.append(C[i] + W[i] * lat + N[i] * (nrm + cup))
             Tparam.append(ts[i])
             inner.append(s < -0.15)  # the -N side faces the head: beige lining
@@ -593,7 +604,7 @@ def ear_mesh(side, segs=28):
 def ear_lining(side, frame):
     """Beige velour lining on the inner face + cream piping around it."""
     C, ts, W, N, width, thick = frame
-    sel = ts > 0.04
+    sel = (ts > 0.2) & (width > 0.02)
     rows = np.nonzero(sel)[0]
     cols = 15
     lat = np.linspace(-1, 1, cols)
@@ -603,7 +614,7 @@ def ear_lining(side, frame):
             half = 0.5 * width[i] * 0.86
             x = l * half
             # inner face sits at -thick/2 (minus cup); hover just above it
-            cup = -EAR_CUP * (l * 0.86) ** 2 * min(1.0, ts[i] / 0.25)
+            cup = -EAR_CUP * (l * 0.86) ** 2 * ear_cup_amount(ts[i])
             depth = -0.5 * thick[i] * (1 - abs(l) ** 4) ** 0.6 + cup - 0.0025
             V.append(C[i] + W[i] * x + N[i] * depth)
             Tparam.append(ts[i])
@@ -618,7 +629,7 @@ def ear_lining(side, frame):
         F = [tuple(reversed(f)) for f in F]
     # piping: along both long edges and round the tip
     def edge(sgn, i):
-        cup = -EAR_CUP * 0.92**2 * min(1.0, ts[i] / 0.25)
+        cup = -EAR_CUP * 0.92**2 * ear_cup_amount(ts[i])
         return C[i] + W[i] * (sgn * 0.5 * width[i] * 0.92) + N[i] * (-0.5 * thick[i] * 0.25 + cup)
 
     edge_l = [edge(-1, i) for i in rows]
@@ -1066,7 +1077,7 @@ def build():
     ear_info = {}
     for side, tag in ((1, "L"), (-1, "R")):
         V, F, tp, inner, frame = ear_mesh(side)
-        efl = np.where(inner & (tp > 0.06), 0.0, 1.0)
+        efl = np.where(inner & (tp > 0.2), 0.0, 1.0)
         add_part(f"ear{tag}", V, F, "fur_tan", ear_w(tp, tag), efl, recalc=True)
         LV, LF, lt, pipe, pipe_t = ear_lining(side, frame)
         add_part(f"lining{tag}", LV, LF, "fur_beige", ear_w(lt, tag), 0.8)
