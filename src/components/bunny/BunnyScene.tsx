@@ -27,6 +27,9 @@ function Framing() {
       // Close-up for checking the face (used by /preview?view=face).
       cam.position.set(0, 1.25, 1.55);
       cam.lookAt(0, 1.18, 0);
+    } else if (view === "paw") {
+      cam.position.set(0.75, 0.75, 1.35);
+      cam.lookAt(0.2, 0.55, 0.15);
     } else if (view === "side") {
       cam.position.set(dist * 0.75, y + 0.15, dist * 0.66);
       cam.lookAt(0, y - 0.05, 0);

@@ -93,7 +93,7 @@ Sewn onto that body:
 - **Head:** egg-shaped, with a centre seam, a wing-shaped cream muzzle, a big mustard triangle nose, a stitched mouth, and embroidered eyes with highlights.
 - **Ears:** long lop ears that twist and cup around the head, tan outside with a beige lining and cream piping.
 - **Body:** a squat pear-shaped body with a cream tummy and chest fold.
-- **Limbs:** arms with cream paw tips and stitches, and big feet with cream soles and toe stitches.
+- **Limbs:** flat plush arms (broad face forward) that widen into rounded mitten paws, with a cream underside panel showing as a crescent on the inner edge and two finger stitches pulled into creases across the front; big feet with cream soles and toe stitches.
 - **Tail:** a cream pom-pom.
 
 It then:

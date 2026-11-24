@@ -632,17 +632,65 @@ def ear_lining(side, frame):
 
 def arm_curve(side):
     # Hangs just clear of the tummy (touching only at the shoulder) so the arm can lift away cleanly.
-    ctrl = np.array([[0.17, 0.74, 0.05], [0.262, 0.645, 0.14], [0.292, 0.52, 0.218], [0.282, 0.42, 0.266], [0.268, 0.37, 0.278]])
+    ctrl = np.array([[0.17, 0.74, 0.05], [0.255, 0.645, 0.14], [0.28, 0.52, 0.212], [0.27, 0.42, 0.258], [0.256, 0.37, 0.27]])
     ctrl[:, 0] *= side
     C, ts, L = catmull_rom(ctrl, 40)
     return C, ts
 
 
+def arm_frames(side):
+    """Arm centreline with a frame: T down the arm, U sideways (outward), V forward."""
+    C, ts = arm_curve(side)
+    T = norm(np.gradient(C, axis=0))
+    fwd = np.array([0.0, 0.0, 1.0])
+    V = norm(fwd - T * (T @ fwd)[:, None])
+    U = norm(np.cross(V, T))
+    U = U * np.sign(U[:, :1] * side + 1e-9)
+    return C, ts, T, U, V
+
+
+def arm_dims(ts):
+    """
+    The real arms are two sewn panels, front and back: a soft, flattened tube whose
+    broad face looks forward, widening into a rounded mitten paw.
+    Returns half-width side-to-side (along U) and half-thickness front-to-back (along V).
+    """
+    width = 0.064 + 0.008 * ts + 0.016 * np.exp(-(((ts - 0.8) / 0.12) ** 2))
+    thick = 0.046 + 0.004 * ts + 0.008 * np.exp(-(((ts - 0.82) / 0.1) ** 2))
+    width, thick = width, thick
+    end = np.where(ts > 0.84, np.sqrt(np.clip(1 - ((ts - 0.84) / 0.16) ** 2, 0, 1)), 1.0)
+    start = np.where(ts < 0.1, 0.82 + 0.18 * ts / 0.1, 1.0)
+    k = end * start
+    return width * k, thick * k
+
+
+def paw_stitch_lines(side):
+    """Two finger stitches across the front of the paw, slanting gently (surface points)."""
+    C, ts, T, U, V = arm_frames(side)
+    a_, b_ = arm_dims(ts)
+
+    def lerp(arr, t):
+        return np.array([np.interp(t, ts, arr[:, k]) for k in range(arr.shape[1])]) if arr.ndim == 2 else np.interp(t, ts, arr)
+
+    lines = []
+    for t0 in (0.83, 0.9):
+        pts, nrm = [], []
+        for ph in np.linspace(math.radians(138), math.radians(62), 24):
+            tt = t0 + 0.03 * (ph - math.radians(100))
+            Ci, Ui, Vi = lerp(C, tt), norm(lerp(U, tt)), norm(lerp(V, tt))
+            ai, bi = lerp(a_, tt), lerp(b_, tt)
+            pts.append(Ci + Ui * ai * math.cos(ph) + Vi * bi * math.sin(ph))
+            nrm.append(norm(Ui * math.cos(ph) / ai + Vi * math.sin(ph) / bi))
+        lines.append((np.array(pts), np.array(nrm)))
+    return lines
+
+
 def arm_radii(ts):
-    r = 0.07 - 0.008 * ts + 0.008 * np.exp(-(((ts - 0.88) / 0.1) ** 2))
-    end = np.where(ts > 0.9, np.sqrt(np.clip(1 - ((ts - 0.9) / 0.1) ** 2, 0, 1)), 1.0)
-    start = np.where(ts < 0.1, 0.8 + 0.2 * ts / 0.1, 1.0)
-    return r * end * start
+    a, b = arm_dims(ts)
+    return np.maximum(a, b)
+
+
+PALM = np.array([-0.94, 0.34])  # the cream underside panel faces in toward the tummy (in U,V)
 
 
 # --- Weights ---------------------------------------------------------------------
@@ -688,17 +736,27 @@ def sdf_radial(rad, P):
     return r - rad.radius_fn(dl)
 
 
-def sdf_arm(C, radii, ts, P):
-    """Distance to a tapered tube along polyline C; also returns the param t."""
-    A, B = C[:-1], C[1:]
+def sdf_arm(side, P):
+    """
+    Distance to the flattened, mitten-pawed arm (a sweep of ellipsoids along the
+    centreline, using an ellipsoid distance approximation); also returns t.
+    """
+    C, ts, T, U, V = arm_frames(side)
+    a_, b_ = arm_dims(ts)
     best = np.full(len(P), 1e9)
     tbest = np.zeros(len(P))
-    for i in range(len(A)):
-        ab = B[i] - A[i]
-        u = np.clip(((P - A[i]) @ ab) / (ab @ ab), 0, 1)
-        q = A[i] + u[:, None] * ab
-        r = radii[i] * (1 - u) + radii[i + 1] * u
-        d = np.linalg.norm(P - q, axis=1) - r
+    for i in range(len(C) - 1):
+        ab = C[i + 1] - C[i]
+        u = np.clip(((P - C[i]) @ ab) / (ab @ ab), 0, 1)
+        q = C[i] + u[:, None] * ab
+        a = np.maximum(a_[i] * (1 - u) + a_[i + 1] * u, 1e-3)
+        b = np.maximum(b_[i] * (1 - u) + b_[i + 1] * u, 1e-3)
+        c = np.minimum(a, b) * 0.9
+        D = P - q
+        du, dv, dt = D @ U[i], D @ V[i], D @ T[i]
+        k0 = np.sqrt((du / a) ** 2 + (dv / b) ** 2 + (dt / c) ** 2)
+        k1 = np.sqrt((du / a**2) ** 2 + (dv / b**2) ** 2 + (dt / c**2) ** 2)
+        d = k0 * (k0 - 1) / np.maximum(k1, 1e-9)
         better = d < best
         best = np.where(better, d, best)
         tbest = np.where(better, ts[i] * (1 - u) + ts[i + 1] * u, tbest)
@@ -713,8 +771,7 @@ def plush_fields(P):
     for side in (1, -1):
         out[f"thigh{side}"] = sdf_radial(thigh(side), P)
         out[f"foot{side}"] = sdf_radial(foot(side), P)
-        C, ts = arm_curve(side)
-        d, t = sdf_arm(C, arm_radii(ts), ts, P)
+        d, t = sdf_arm(side, P)
         out[f"arm{side}"], out[f"armt{side}"] = d, t
     return out
 
@@ -836,9 +893,22 @@ def finish_plush_body(V):
         fl = np.where(on, np.minimum(fl, sstep(0.92, 1.05, in_ellipse(D[:, 0], D[:, 1], (0, 0.0), (0.86, 0.9), 2.4))), fl)
 
     # Cream paw tips (same fabric piece, so a colour change rather than a separate mesh)
+    # Stitched finger creases on the paws: short pile along the stitch lines.
+    for side in (1, -1):
+        for pts, _ in paw_stitch_lines(side):
+            d = np.min(np.linalg.norm(V[:, None, :] - pts[None, :, :], axis=2), axis=1)
+            fl = np.minimum(fl, 0.25 + 0.75 * sstep(0.004, 0.016, d))
+
+    # Cream underside panel: the inner side of the paw (a crescent from the front) and the tip's underside.
     for k, side in ((6, 1), (7, -1)):
         t = f[f"armt{side}"]
-        c = sstep(0.8, 0.84, t) * (owner == k)
+        C, ts, T, U, Vf = arm_frames(side)
+        idx = np.clip(np.searchsorted(ts, t), 0, len(ts) - 1)
+        D = norm(V - C[idx])
+        palm = norm(PALM[0] * U[idx] + PALM[1] * Vf[idx])
+        s = np.sum(D * palm, axis=1)
+        tip_under = sstep(0.9, 0.95, t) * sstep(-0.6, -0.2, s)
+        c = np.maximum(sstep(0.68, 0.74, t) * sstep(0.32, 0.5, s), tip_under) * (owner == k)
         albedo = albedo * (1 - c[:, None]) + cream[None, :] * c[:, None]
 
     return w, fl, albedo
@@ -933,19 +1003,11 @@ def build():
 
     # Paw stitches (the arms themselves are part of the plush body)
     for side, bone in ((1, "arm_L"), (-1, "arm_R")):
-        C, ts = arm_curve(side)
-        r = arm_radii(ts)
-        # stitch across the paw front
-        i0 = np.searchsorted(ts, 0.9)
-        Tn = norm(C[min(i0 + 1, len(C) - 1)] - C[i0 - 1])
-        fwd = norm(np.cross(Tn, [side, 0, 0]) * -1)
-        if fwd[2] < 0:
-            fwd = -fwd
-        side_v = norm(np.cross(fwd, Tn))
-        rr = r[i0] + 0.0105
-        pts = [C[i0] + rr * (math.cos(a) * fwd + math.sin(a) * side_v) for a in np.linspace(-0.6, 0.6, 16)]
-        V, F = tube(np.array(pts), np.full(16, 0.0032), segs=8)
-        add_part(f"paw_stitch{side}", V, F, "thread", {bone: 1.0}, 0.0)
+        # Two little "finger" stitches across the tan front of the paw, pulled tight
+        # into creases (the fur mask shortens the pile along them).
+        for j, (pts, nrm) in enumerate(paw_stitch_lines(side)):
+            V, F = tube(pts + nrm * 0.0045, np.full(len(pts), 0.0034), segs=8)
+            add_part(f"paw_stitch{side}{j}", V, F, "thread", {bone: 1.0}, 0.0)
 
     # Ears + linings + piping
     ear_info = {}
@@ -985,8 +1047,7 @@ def body_parts_sdf(P):
 def arms_sdf(P):
     out = np.full(len(P), 9.0)
     for side in (1, -1):
-        C, ts = arm_curve(side)
-        d, _ = sdf_arm(C, arm_radii(ts), ts, P)
+        d, _ = sdf_arm(side, P)
         out = np.minimum(out, d)
     return out
 
