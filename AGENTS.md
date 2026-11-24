@@ -277,6 +277,6 @@ None of the helper pages are linked from the call UI.
 ## 7. Open items
 - `src/bunny.config.ts` still has `TODO` memories and inside jokes. Adam should fill these in; they matter most.
 - No live call has been made on a real phone yet, so phone performance with fur is untested. If it's laggy, try `?shells=6`, then lower the mobile default in `fur.ts` (`defaultShellCount`).
-- Check that `OPENAI_API_KEY` and the Turso variables are set in Vercel (they weren't set by an agent).
+- `OPENAI_API_KEY` is set on Vercel (calls work). **Turso is not**: the live site reports `"backend":"memory"` at `/api/memories`, so memories vanish on every cold start. Add `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in Vercel.
 - The mouth and toe stitches still use the darker `thread` colour (the paw stitches are tan).
 - When she waves, the raised arm pushes her left ear quite far out sideways (the collision solve doing its job). A softer wave target or letting the ear swing back as well as out would look nicer.
