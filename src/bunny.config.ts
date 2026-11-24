@@ -86,7 +86,7 @@ export const bunny = {
    * Coral came out highest and most childlike when asked to talk like a little
    * girl (measured ~280 Hz vs shimmer's ~190 Hz).
    */
-  voice: "coral",
+  voice: "sage",
 
   /**
    * The realtime voices are all grown-ups, so the phone pitch-shifts the
@@ -94,7 +94,7 @@ export const bunny = {
    * what turns an adult voice into a small child's. 0 = off.
    * 3 = subtle, 4 = little girl, 5-6 = squeaky toy. Env BUNNY_PITCH overrides.
    */
-  pitchSemitones: 4,
+  pitchSemitones: 8,
 
   /**
    * HOW SHE TALKS. The goal: a real 3–4 year old little girl — the voice, the
