@@ -2,7 +2,7 @@
 
 **This file is the single source of truth for this repo.** `CLAUDE.md` and `README.md` just point here. When you change how something works, update this file in the same commit.
 
-A private web app built by Adam for his wife. She opens it on her phone, taps **Call**, and her real plush bunny, **Oney**, picks up as a 3D bunny on a FaceTime-style video call, sitting on the bed in her bedroom. Oney talks back in a little girl's voice, moves (waves, nuzzles, gets sad, hops), **reacts to Mommy on the video** (gets excited to see her, waves back, giggles at smiles, comforts her when she looks sad), and remembers things between calls.
+A private web app built by Adam for his wife. She opens it on her phone, taps **Call**, and her real plush bunny, **Oney**, picks up as a 3D bunny on a FaceTime-style video call, sitting on Mommy's real bed (restyled to be warm and dreamy). Oney talks back in a little girl's voice, moves (waves, nuzzles, gets sad, hops), **reacts to Mommy on the video** (gets excited to see her, waves back, giggles at smiles, comforts her when she looks sad), and remembers things between calls.
 
 - Live: **https://miffy-mu.vercel.app** (passcode-locked; ask Adam for the passcode)
 - Repo: `adamlewison/miffy`. **Pushing to `main` auto-deploys to Vercel.**
@@ -211,7 +211,7 @@ Turso/libSQL. The table is auto-created (`db/schema.sql` is for reference). The 
 ### Model loading and animation: `src/components/bunny/`
 | File | Role |
 | --- | --- |
-| `BunnyScene.tsx` | Canvas, lights, FaceTime framing (head, shoulders and upper tummy, fitted per screen shape) with a slow handheld drift, the blurred bedroom backdrop (`public/room-portrait.jpg` / `room-landscape.jpg`, AI-generated, unlit plane far behind her), `?view=full\|face\|side\|paw` for test shots (no room, no drift), fps cap (30 on touch), contact shadow, GLB detection |
+| `BunnyScene.tsx` | Canvas, lights, FaceTime framing (head, shoulders and upper tummy, fitted per screen shape) with a slow handheld drift, the bedroom backdrop (`public/room-portrait.jpg` / `room-landscape.jpg`: Mommy's real bed (grey headboard, textured wallpaper, navy floral bedding) restyled with OpenAI image edits into warm, dreamy lamplight, then lightly blurred; an unlit plane far behind her). To redo it, send a photo of the bed to `/v1/images/edits` (gpt-image-2) at 1024x1536 and 1536x1024, keeping the layout and asking for warm, soft, storybook lighting with nothing in the centre, `?view=full\|face\|side\|paw` for test shots (no room, no drift), fps cap (30 on touch), contact shadow, GLB detection |
 | `GlbBunny.tsx` | loads `bunny.glb` and `bunny.collision.json`, applies fur, per-model rig options and gesture poses |
 | `rig.ts` | all procedural animation: states, spring ears, voice-driven bob/squish/jaw, tricks, held gestures |
 | `collide.ts` | per-frame solid-body solve (head and body SDF grids, arm and ear spheres) |
