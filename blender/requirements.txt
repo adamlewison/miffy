@@ -1,0 +1,5 @@
+# Headless Blender + helpers for blender/build_oney.py.
+# bpy wheels are tied to one Python version: bpy 5.3 needs Python 3.13.
+bpy==5.3.0
+scikit-image>=0.26
+numpy>=2

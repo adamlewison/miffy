@@ -7,7 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "model": ".bvenv/bin/python blender/build_oney.py --out public/bunny.glb",
+    "model:renders": ".bvenv/bin/python blender/build_oney.py --out public/bunny.glb --renders .oney-out/renders",
+    "check:types": "tsc --noEmit",
+    "check:solid": "node tools/solid.cjs",
+    "check:voice": "tsx tools/voice-test.mts",
+    "shots": "node tools/shots.cjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
@@ -25,6 +31,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.187.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3"
   }
 }

@@ -1241,7 +1241,9 @@ def export(path):
         export_attributes=True,
         export_vertex_color="ACTIVE",
         export_all_vertex_colors=False,
-        export_draco_mesh_compression_enable=True,
+        # The pip `bpy` wheel ships without the Draco library, so compression is off (the
+        # GLB is ~2.7 MB uncompressed, fine). Turn this on if you build with full Blender.
+        export_draco_mesh_compression_enable=False,
         export_draco_mesh_compression_level=7,
         export_draco_position_quantization=14,
         export_draco_normal_quantization=10,

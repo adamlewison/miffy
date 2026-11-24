@@ -11,3 +11,4 @@ local.db*
 *.bvenv
 .bvenv
 __pycache__/
+.oney-out/
