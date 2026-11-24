@@ -110,6 +110,7 @@ COLORS = {
     "eye": "#0d0b0a",
     "eye_shine": "#fbfaf6",
     "thread": "#7a5735",
+    "thread_tan": "#a8784c",  # paw finger stitches: tan, just deeper than the fur
 }
 
 # ----------------------------------------------------------------------------
@@ -338,7 +339,7 @@ def make_materials():
         if name == "fur_tan":
             lin = np.ones(3)  # the plush body carries its colours per vertex (tan + cream paw tips)
         bsdf.inputs["Base Color"].default_value = (*lin, 1.0)
-        rough = {"eye": 0.45, "eye_shine": 0.5, "thread": 0.75}.get(name, 0.95)
+        rough = {"eye": 0.45, "eye_shine": 0.5, "thread": 0.75, "thread_tan": 0.85}.get(name, 0.95)
         bsdf.inputs["Roughness"].default_value = rough
         if name.startswith("fur_"):
             # Fabric sheen for the preview renders; three.js does its own fur.
@@ -1006,8 +1007,8 @@ def build():
         # Two little "finger" stitches across the tan front of the paw, pulled tight
         # into creases (the fur mask shortens the pile along them).
         for j, (pts, nrm) in enumerate(paw_stitch_lines(side)):
-            V, F = tube(pts + nrm * 0.0045, np.full(len(pts), 0.0034), segs=8)
-            add_part(f"paw_stitch{side}{j}", V, F, "thread", {bone: 1.0}, 0.0)
+            V, F = tube(pts + nrm * 0.0035, np.full(len(pts), 0.0022), segs=8)
+            add_part(f"paw_stitch{side}{j}", V, F, "thread_tan", {bone: 1.0}, 0.0)
 
     # Ears + linings + piping
     ear_info = {}

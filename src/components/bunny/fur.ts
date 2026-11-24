@@ -58,6 +58,7 @@ export const FUR_PROFILES: Record<string, FurProfile | null> = {
   eye: null,
   eye_shine: null,
   thread: null,
+  thread_tan: null,
 };
 
 /** Layer used for shells: the main camera renders it, the contact shadow camera doesn't. */
