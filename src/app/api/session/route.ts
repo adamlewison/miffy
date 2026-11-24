@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * needs to start the call. The real API key never leaves the server.
  */
 export async function POST() {
-  const model = process.env.REALTIME_MODEL || "gpt-realtime-mini";
+  const model = process.env.REALTIME_MODEL || "gpt-realtime-2.1";
   const voice = process.env.BUNNY_VOICE || bunny.voice;
   const envPitch = Number(process.env.BUNNY_PITCH);
   const pitchSemitones = process.env.BUNNY_PITCH && Number.isFinite(envPitch) ? envPitch : bunny.pitchSemitones;

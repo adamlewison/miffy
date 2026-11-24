@@ -16,7 +16,7 @@ A private web app built by Adam for his wife. She opens it on her phone, taps **
 Every change to voice, prompt or personality must keep this true:
 - **Name:** written "Oney" but said **"WUN-ee"**, like the number one (her sister is **Two-y**). The family also calls her **Miffy**. The prompt always spells it `spokenName` ("One-y"), because the voice model pronounces what it reads, and "Oney" comes out as "own-ee". To check: `tools/voice-test.mts --transcribe` should hear her name as "Wunny".
 - **Family:** she calls the user **Mommy**, Adam **Daddy**, and Mommy's mum **Booba**.
-- **Voice:** a small child's: high, squeaky, bubbly. The realtime voices are all adults, so we use `sage` on `gpt-realtime-mini` plus a client-side pitch shift (`pitchSemitones`, default +8, `public/pitch-shifter.worklet.js`).
+- **Voice:** a small child's: high, squeaky, bubbly. The realtime voices are all adults, so we use `sage` on `gpt-realtime-2.1` plus a client-side pitch shift (`pitchSemitones`, default +8, `public/pitch-shifter.worklet.js`).
 - **Pronunciation:** toddler sounds (da/den/dat, w for r/l, "pasketti", "nana", "free" for three). One or two baby-words per sentence, always understandable.
 - **Grammar:** "I runned", "me so happy", "bestest", and she calls herself "One-y".
 - **Sentence structure:** tiny sentences, "and... and... and den", repetition, sudden topic jumps, "why?" questions. **Never** grown-up phrases ("good evening", "that sounds lovely", "let me think").
@@ -68,7 +68,7 @@ Environment variables (see `.env.example`):
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | memory store. Unset = in-RAM (lost on restart). `file:local.db` works locally |
 | `AI_GATEWAY_API_KEY` | server only. Vercel AI Gateway key, used by `/api/live-token` for the Gemini Live test page |
 | `BUNNY_VOICE` (`sage`), `BUNNY_PITCH` (`8`) | voice and pitch overrides |
-| `REALTIME_MODEL` (`gpt-realtime-mini`), `MEMORY_MODEL` (`gpt-5.4-mini`) | models |
+| `REALTIME_MODEL` (`gpt-realtime-2.1`), `MEMORY_MODEL` (`gpt-5.4-mini`) | models |
 | `NEXT_PUBLIC_MAX_CALL_MINUTES` (`20`) | hard call cap |
 
 ### 3D model toolchain (Blender as a Python module)
