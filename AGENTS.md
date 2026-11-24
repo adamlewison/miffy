@@ -66,6 +66,7 @@ Environment variables (see `.env.example`):
 | `OPENAI_API_KEY` | server only. Mints realtime keys, extracts memories, voice samples |
 | `BUNNY_PASSCODE`, `AUTH_SECRET` | passcode lock. Unset = no lock (dev only) |
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | memory store. Unset = in-RAM (lost on restart). `file:local.db` works locally |
+| `AI_GATEWAY_API_KEY` | server only. Vercel AI Gateway key, used by `/api/live-token` for the Gemini Live test page |
 | `BUNNY_VOICE` (`coral`), `BUNNY_PITCH` (`4`) | voice and pitch overrides |
 | `REALTIME_MODEL` (`gpt-realtime-2.1`), `MEMORY_MODEL` (`gpt-5.4-mini`) | models |
 | `NEXT_PUBLIC_MAX_CALL_MINUTES` (`20`) | hard call cap |
@@ -256,6 +257,7 @@ A two-tap delay-line shifter: +4 semitones raises both pitch and formants (child
 | `/` | the call |
 | `/preview` | test bench (`?view=`, `?hold=1`, `?debug=1`, `?shells=`) |
 | `/voices` | voice and pitch audition |
+| `/live-test` | experimental: talk to Gemini Live (Aoede voice) through the Vercel AI Gateway, with the pitch shifter. Needs a real `AI_GATEWAY_API_KEY`. The sandbox proxy blocks WebSockets, so it can only be tried from a real browser |
 | `/memories` | view and edit memories |
 | `/login` | passcode |
 

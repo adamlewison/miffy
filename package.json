@@ -16,6 +16,7 @@
     "shots": "node tools/shots.cjs"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "^4.0.154",
     "@libsql/client": "^0.18.0",
     "@openai/agents": "^0.22.0",
     "@react-three/drei": "^10.7.9",
