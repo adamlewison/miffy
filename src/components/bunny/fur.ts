@@ -139,6 +139,10 @@ function furMaterial(source: THREE.MeshStandardMaterial, p: FurProfile, h: numbe
         varying float vFurMask;
         float furHash13(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
         vec3 furHash33(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.xxy + p.yxx) * p.zyx); }
+        // Cheap smooth low-frequency noise (0..1): used for tufts and patchy shading.
+        float furSoft(vec3 p) {
+          return 0.5 + 0.5 * sin(p.x * 1.3 + 1.7 * sin(p.y * 0.9 + 0.6 * sin(p.z * 1.7))) * sin(p.z * 1.1 + 1.3 * sin(p.x * 0.7 + 0.8 * sin(p.y * 1.3)));
+        }
         float furStrand(vec3 p, float h, out float id) {
           vec3 c = floor(p);
           vec3 f = fract(p) - 0.5;
@@ -166,15 +170,20 @@ function furMaterial(source: THREE.MeshStandardMaterial, p: FurProfile, h: numbe
           float d = min(d1, d2);
           float id = d1 < d2 ? id1 : id2;
           // variable strand length, tapering radius
-          float len = 0.6 + 0.4 * id;
+          // Soft tufts: neighbouring strands clump to similar lengths, like real terry pile.
+          float tuft = furSoft(vFurP * 38.0);
+          float len = (0.6 + 0.4 * id) * (0.82 + 0.3 * tuft);
           float hh = uFurH / len;
           if (hh > 1.0) discard;
           float radius = uThick * pow(1.0 - hh, 0.6) * (0.8 + 0.4 * id);
           float aa = fwidth(d) + 1e-4;
           furA = 1.0 - smoothstep(radius - aa, radius + aa, d);
           if (furA < 0.02) discard;
-          furShade = mix(uRootDark, 1.0, pow(uFurH, 0.75)) * (0.9 + 0.2 * id);
-          furTip = pow(hh, 3.0);
+          furShade = mix(uRootDark, 1.0, pow(uFurH, 0.75)) * (0.88 + 0.24 * id) * (0.93 + 0.14 * tuft);
+          // Each strand is a slightly different warm/cool shade, lighter and sun-bleached at the tips.
+          diffuseColor.rgb *= mix(vec3(0.95, 0.91, 0.87), vec3(1.05, 1.04, 1.02), id);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.12, 1.07, 0.98), pow(hh, 2.0) * 0.5);
+          furTip = pow(hh, 3.0) * (0.5 + id);
         } else {
           furShade = mix(uRootDark, 1.0, 0.25);
         }
@@ -189,6 +198,8 @@ function furMaterial(source: THREE.MeshStandardMaterial, p: FurProfile, h: numbe
           float fres = pow(1.0 - saturate(dot(normal, vv)), 2.4);
           totalEmissiveRadiance += uRimColor * fres * uRim * (0.35 + 0.65 * uFurH) * diffuseColor.rgb * 1.6;
           totalEmissiveRadiance += uRimColor * furTip * uTipLight * diffuseColor.rgb;
+          // Light scattering through the pile: shadowed fur never goes flat or grey, it glows warm.
+          totalEmissiveRadiance += vec3(1.0, 0.82, 0.66) * diffuseColor.rgb * (0.07 + 0.05 * uFurH);
         }`,
       );
   };

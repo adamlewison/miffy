@@ -174,6 +174,8 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
     nextFoot: 4,
     footAt: -10,
     footSide: 1,
+    nextFidget: 6 + Math.random() * 6,
+    fidget: null as null | { type: 'curious' | 'shuffle' | 'shiver' | 'stretch'; at: number },
   });
 
   const captureRest = (o: THREE.Object3D | null) => {
@@ -224,6 +226,9 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       0.09 * Math.sin(t * 0.31) + 0.03 * Math.sin(t * 0.83),
       0.04 * Math.sin(t * 0.43),
     );
+    // Eyes lead, the head follows a beat later: looking left makes her head turn a little too.
+    tgt.y += s.gaze.x * 0.07;
+    tgt.x -= s.gaze.y * 0.05;
     let earLift = 0;
     let droopR = 0;
     let lean = 0;
@@ -254,6 +259,30 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
     s.droopR = damp(s.droopR, droopR, 3, dt);
     s.lean = damp(s.lean, lean, 3, dt);
 
+    // ---- Idle fidgets: tiny unprompted things a living toy does ---------------
+    s.nextFidget -= dt;
+    if (s.nextFidget <= 0) {
+      s.nextFidget = 7 + Math.random() * 9;
+      if (mode === "idle" || mode === "listening") {
+        const kinds = ["curious", "shuffle", "shiver", "stretch"] as const;
+        s.fidget = { type: kinds[Math.floor(Math.random() * kinds.length)], at: t };
+      }
+    }
+    let fCur = 0; // curious tilt, with ears perking
+    let fShuf = 0; // weight shift side to side
+    let fShiv = 0;
+    let fStretch = 0;
+    if (s.fidget) {
+      const fe = t - s.fidget.at;
+      const dur = s.fidget.type === "shiver" ? 0.7 : s.fidget.type === "stretch" ? 2.2 : 2.0;
+      const env = fe < dur ? Math.sin((fe / dur) * Math.PI) ** 0.6 : 0;
+      if (s.fidget.type === "curious") fCur = env;
+      else if (s.fidget.type === "shuffle") fShuf = env * Math.sin(fe * 2.4);
+      else if (s.fidget.type === "shiver") fShiv = env * Math.sin(fe * 55);
+      else fStretch = env;
+      if (fe > dur) s.fidget = null;
+    }
+
     // ---- Tricks -------------------------------------------------------------
     let hopY = 0;
     let spinY = 0;
@@ -267,11 +296,14 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       if (tr.type === "hop") {
         // Two little hops.
         const hop = (x: number, h: number) => (x > 0 && x < 1 ? 4 * h * x * (1 - x) : 0);
-        hopY = hop(e / 0.42, 0.2) + hop((e - 0.46) / 0.36, 0.12);
+        // Anticipation: crouch first (0.14 s), then spring.
+        const e2 = e - 0.14;
+        hopY = hop(e2 / 0.42, 0.2) + hop((e2 - 0.46) / 0.36, 0.12);
         const land = (x: number) => (x > 0 && x < 0.18 ? Math.sin((x / 0.18) * Math.PI) : 0);
-        landSquash = land(e - 0.42) * 0.12 + land(e - 0.82) * 0.08 + land(e) * 0.06;
+        const crouch = e < 0.14 ? Math.sin((e / 0.14) * Math.PI * 0.5) * 0.1 : 0;
+        landSquash = land(e2 - 0.42) * 0.12 + land(e2 - 0.82) * 0.08 + crouch;
         if (e < 0.05) flick = 1;
-        if (e > 1.2) bunnyState.trick = null;
+        if (e > 1.35) bunnyState.trick = null;
       } else if (tr.type === "ear_flick") {
         if (e < 0.05) flick = 1.4;
         if (e > 0.6) bunnyState.trick = null;
@@ -306,9 +338,9 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
     // Nuzzle: rub the head side to side, leaning in toward the camera.
     const rub = Math.sin(t * 4.2);
     const headX =
-      s.head.x * (1 - gw.sad * 0.6) + gw.sad * 0.38 + gw.nuzzle * 0.12 + gw.sleepy * (0.3 + 0.04 * Math.sin(t * 0.8)) + gw.shy * 0.2 - laugh * 0.16 - gw.cheer * 0.12 + gw.clap * 0.04;
+      fCur * 0.06 - fStretch * 0.2 + s.head.x * (1 - gw.sad * 0.6) + gw.sad * 0.38 + gw.nuzzle * 0.12 + gw.sleepy * (0.3 + 0.04 * Math.sin(t * 0.8)) + gw.shy * 0.2 - laugh * 0.16 - gw.cheer * 0.12 + gw.clap * 0.04;
     const headY = s.head.y + gw.nuzzle * 0.14 * Math.sin(t * 4.2 + 0.6) - gw.shy * 0.22;
-    const headZ = s.head.z * (1 - gw.sad * 0.5) + gw.wave * 0.12 + gw.nuzzle * 0.22 * rub + gw.shy * 0.24 + laugh * 0.05 * Math.sin(t * 24) + gw.cheer * 0.1 * Math.sin(t * 7) + gw.sleepy * 0.1;
+    const headZ = fCur * 0.3 + s.head.z * (1 - gw.sad * 0.5) + gw.wave * 0.12 + gw.nuzzle * 0.22 * rub + gw.shy * 0.24 + laugh * 0.05 * Math.sin(t * 24) + gw.cheer * 0.1 * Math.sin(t * 7) + gw.sleepy * 0.1;
 
     // ---- Root: sway, hop, spin -------------------------------------------
     if (rig.root) {
@@ -316,7 +348,7 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       rig.root.position.copy(r.p);
       rig.root.position.y += hopY * I;
       rig.root.position.z += gw.nuzzle * 0.12 * I;
-      _e.set((s.lean + gw.nuzzle * 0.16 + gw.sad * 0.07) * I, spinY + 0.04 * Math.sin(t * 0.37) * I, (0.025 * Math.sin(t * 0.7) + wiggleZ) * I);
+      _e.set((s.lean + gw.nuzzle * 0.16 + gw.sad * 0.07) * I, spinY + 0.04 * Math.sin(t * 0.37) * I + fShuf * 0.04, (0.025 * Math.sin(t * 0.7) + wiggleZ + fShuf * 0.05 + fShiv * 0.012) * I);
       rig.root.quaternion.copy(r.q).multiply(_q.setFromEuler(_e));
       const vy = (rig.root.position.y - s.prevRootY) / Math.max(dt, 1e-3);
       const accY = (vy - s.rootVelY) / Math.max(dt, 1e-3);
@@ -333,7 +365,8 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
     // ---- Body: breathing + talking squish + landing squash ----------------
     if (rig.body) {
       const r = rest.current.get(rig.body)!;
-      const breath = 0.02 * Math.sin((t * Math.PI * 2) / 3.6);
+      const ph = (t * Math.PI * 2) / 3.6;
+      const breath = 0.02 * Math.sin(ph + 0.55 * Math.sin(ph)) * (1 + 0.3 * Math.sin(t * 0.21)) + fStretch * 0.025;
       const snuggle = gw.nuzzle * 0.025 * (1 + Math.sin(t * 8.4));
       const sy = 1 + breath * I + gw.sleepy * 0.015 * Math.sin(t * 1.4) - lvl * 0.04 * I - syllable * 0.25 * I - landSquash - gw.sad * 0.05 - snuggle;
       const sxz = 1 + (1 - sy) * 0.55;
@@ -393,8 +426,9 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       const fz = -headVel.z * 9 * side + headVel.y * 4 * side + flick * 60 + laugh * Math.sin(t * 26) * 90;
       // Positive lift pulls ears upright (less splay), droop lets one fall.
       // Sad: both ears flop right down. Nuzzle: ears relax back.
-      const lift = s.earLift * (1 - gw.sad) - gw.sad * 0.2 + gw.cheer * 0.3;
-      const restZ = (-lift * 0.6 + droop * (1 - gw.sad) + gw.sad * earSad + gw.nuzzle * 0.25 + gw.sleepy * 0.2 + gw.shy * 0.15) * earAmt;
+      const lift = (s.earLift + fCur * 0.3) * (1 - gw.sad) - gw.sad * 0.2 + gw.cheer * 0.3;
+      const sway = 0.035 * Math.sin(t * 0.63 + side * 1.9) + 0.02 * Math.sin(t * 1.37 + side);
+      const restZ = (sway - lift * 0.6 + droop * (1 - gw.sad) + gw.sad * earSad + gw.nuzzle * 0.25 + gw.sleepy * 0.2 + gw.shy * 0.15) * earAmt;
       const restX = (-lift * 0.25 + droop * 0.3 - gw.nuzzle * 0.35 + gw.sad * 0.25 + gw.sleepy * 0.2) * earAmt;
       const ax1 = stepSpring(sp.x1, restX, 140, 7, fx, dt);
       const ax2 = stepSpring(sp.x2, restX * 0.6, 110, 5, -ax1 * 0.35 + fx * 0.4, dt);
@@ -495,6 +529,7 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
     s.nextGaze -= dt;
     if (s.nextGaze <= 0) {
       s.nextGaze = 0.8 + Math.random() * 2.8;
+      if (Math.random() < 0.35) s.nextBlink = Math.min(s.nextBlink, 0.08);
       if (mode === "thinking") s.gazeTgt.set(0.7 * (Math.random() < 0.5 ? 1 : -1), 1);
       else if (mode === "talking" || mode === "listening") s.gazeTgt.set((Math.random() - 0.5) * 0.7, (Math.random() - 0.5) * 0.5);
       else s.gazeTgt.set((Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 1.0);

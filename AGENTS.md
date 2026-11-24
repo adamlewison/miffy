@@ -40,7 +40,7 @@ Arms and ears never pass through her head, body, legs or each other. This is enf
 ## 2. How it works (the simple version)
 
 1. **Her body is code.** `blender/build_oney.py` runs Blender headless (as a Python library) and builds her from maths: each part is a smooth 3D shape sized from the photos, the parts are blended into one stuffed surface, and patches and stitches are laid on top. It also bakes soft shadows, adds a 21-bone skeleton, and exports `public/bunny.glb` plus `public/bunny.collision.json`.
-2. **Her fur is drawn live.** `fur.ts` redraws each fabric part 10 times on phones and 20 on desktop, each layer pushed slightly further out and cut into strands, so she looks fluffy. The GLB itself is smooth.
+2. **Her fur is drawn live** (per-strand warm/cool colour, soft tufts of clumped length, sun-bleached tips and a warm scattered-light glow in shadow). `fur.ts` redraws each fabric part 10 times on phones and 20 on desktop, each layer pushed slightly further out and cut into strands, so she looks fluffy. The GLB itself is smooth.
 3. **Her movement is code.** `rig.ts` turns her bones every frame: breathing, springy ears, a head bob from her voice volume, and gesture poses. `collide.ts` then nudges any arm or ear out of her body.
 4. **Her voice is OpenAI Realtime.** Audio goes straight from the phone to OpenAI over WebRTC. Our server only mints a 10-minute key and builds her instructions (character sheet plus memories). Her reply audio is pitch-shifted on the phone and drives the talking animation.
 
@@ -222,7 +222,7 @@ Turso/libSQL. The table is auto-created (`db/schema.sql` is for reference). The 
 | Nuzzle | leans in, rubs her head, arms forward |
 | Tricks | hop, ear flick, wiggle, spin, giggle |
 | Clap / Cheer / Shy / Sleepy | paws clap together / arms thrown up / bashful head-tilt with paws to cheeks / yawn and droop |
-| Always on | blinking (incl. double blinks), eye gaze, nose sniffs, tail wag, foot taps, floppy wrists, a `happy` level that squints eyes, wags the tail and kicks the feet |
+| Always on | organic breathing (quick inhale, slow exhale), independent ear sway, eyes that lead the head, blinks on gaze jumps, random idle fidgets (curious tilt, weight shuffle, shiver, stretch), a crouch before every hop, blinking (incl. double blinks), eye gaze, nose sniffs, tail wag, foot taps, floppy wrists, a `happy` level that squints eyes, wags the tail and kicks the feet |
 
 **Skeleton contract (21 bones):**
 - Bones: `root` → `body` → `chest` (spine; breathing, lean, head follow-through) → `head` → `jaw`, `nose` (sniffs), `eye_L`/`eye_R` (blink, squint, gaze: the eye patches are skinned to these), and three-segment ears `ear_{L,R}_1/2/3` (the tip flutters). `arm_{L,R}` (child of `chest`) → `paw_{L,R}` (floppy wrist, wave from the wrist). `foot_{L,R}` (kicks, taps) and `tail` (wag) hang off `body`. Aliases in `BONE_NAMES`. "L" is +x.
