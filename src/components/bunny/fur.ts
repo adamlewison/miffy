@@ -251,13 +251,13 @@ export function applyFur(root: THREE.Object3D, shells = defaultShellCount()) {
       // Embroidered eyes / threads: satin, slightly glossy.
       const m = new THREE.MeshPhysicalMaterial({
         color: src.color.clone(),
-        roughness: name === "eye" ? 0.38 : 0.7,
+        roughness: name === "eye" ? 0.52 : 0.7,
         metalness: 0,
         vertexColors: !!mesh.geometry.getAttribute("color"),
         sheen: 0.5,
         sheenRoughness: 0.4,
         sheenColor: new THREE.Color("#ffffff"),
-        clearcoat: name === "eye" ? 0.35 : 0,
+        clearcoat: name === "eye" ? 0.12 : 0,
         clearcoatRoughness: 0.35,
       });
       mesh.material = m;

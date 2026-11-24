@@ -105,7 +105,7 @@ COLORS = {
     "fur_cream": "#e6dac2",
     "fur_beige": "#d2bb98",
     "fur_piping": "#efe6d4",
-    "fur_nose": "#a87430",
+    "fur_nose": "#b3842f",  # mustard, like the real nose
     "fur_tail": "#ece3d0",
     "eye": "#0d0b0a",
     "eye_shine": "#fbfaf6",
@@ -217,6 +217,22 @@ def outline_from_polygon(poly, center, iters=4):
         return r * np.cos(th), r * np.sin(th)
 
     return fn
+
+
+def crisp_outline(poly, center, cut=0.1, per_edge=48):
+    """Straight-sided outline with only the corners gently rounded (outline_from_polygon bulges sides)."""
+    P = np.asarray(poly, float)
+    n = len(P)
+    pts = []
+    for i in range(n):
+        a, b, c = P[i - 1], P[i], P[(i + 1) % n]
+        p0, p1 = b + (a - b) * cut, b + (c - b) * cut
+        for t in np.linspace(0, 1, 6, endpoint=False):  # quadratic Bezier round-off at the corner
+            pts.append((1 - t) ** 2 * p0 + 2 * (1 - t) * t * b + t * t * p1)
+        q0, q1 = p1, c + (b - c) * cut
+        for t in np.linspace(0, 1, per_edge, endpoint=False):
+            pts.append(q0 + (q1 - q0) * t)
+    return outline_from_polygon(np.array(pts), center, iters=0)
 
 
 def ellipse_outline(ru, rv, power=2.0):
@@ -444,36 +460,53 @@ def add_part(name, V, F, mat, weights, furlen=None, smooth=True, recalc=False):
 # ----------------------------------------------------------------------------
 
 # --- Head ------------------------------------------------------------------
-HEAD_C = np.array([0.0, 1.05, 0.01])
+HEAD_C = np.array([0.0, 1.07, 0.01])  # head a bit taller than wide, like the real toy (tools/face_metrics.py)
+
+
+def face_seam_x(dy):
+    """|x| (as a head direction) of the face seams: the nose corners at the bottom, out toward the ear roots at the top."""
+    return 0.3 + 0.16 * sstep(-0.22, 0.9, dy)
 
 
 def head_radius(d):
     dx, dy, dz = d[..., 0], d[..., 1], d[..., 2]
-    rx = 0.292 * (1 - 0.09 * dy) + 0.016 * np.exp(-(((dy + 0.25) / 0.3) ** 2))  # egg + cheeks
-    ry = 0.285
-    rz = 0.275
-    r = 1 / np.sqrt((dx / rx) ** 2 + (dy / ry) ** 2 + (dz / rz) ** 2)
-    muzzle = 0.034 * np.exp(-((dx / 0.34) ** 2 + ((dy + 0.33) / 0.26) ** 2)) * np.clip(dz, 0, 1) ** 1.5
-    cheeks = 0.012 * np.exp(-(((np.abs(dx) - 0.55) / 0.2) ** 2 + ((dy + 0.2) / 0.3) ** 2)) * np.clip(dz, 0, 1)
-    seam_w = np.maximum(sstep(-0.22, -0.02, dy), sstep(0.15, -0.15, dz))
-    seam = -0.0065 * np.exp(-((dx / 0.03) ** 2)) * seam_w
-    # Soft panel puffs either side of the seam (plush stuffing pushes out).
-    puff = 0.004 * np.exp(-(((np.abs(dx) - 0.3) / 0.25) ** 2)) * sstep(-0.1, 0.4, dy)
-    return r + muzzle + cheeks + seam + puff
+    # A broad, slightly squarish head (a sewn gusset makes plush heads boxier than a ball):
+    # wide forehead, full cheeks, a little taller than wide.
+    rx = 0.298 + 0.012 * np.exp(-(((dy + 0.25) / 0.3) ** 2))
+    ry = 0.34
+    rz = 0.272
+    pw = 2.45
+    r = 1 / ((np.abs(dx / rx) ** pw + np.abs(dy / ry) ** pw + np.abs(dz / rz) ** pw) ** (1 / pw))
+    # A full, wide lower face (the real toy's muzzle is broad and soft, not a snout).
+    muzzle = 0.03 * np.exp(-((dx / 0.5) ** 2 + ((dy + 0.45) / 0.3) ** 2)) * np.clip(dz, 0, 1) ** 1.5
+    cheeks = 0.012 * np.exp(-(((np.abs(dx) - 0.6) / 0.22) ** 2 + ((dy + 0.25) / 0.3) ** 2)) * np.clip(dz, 0, 1)
+    # Two very faint panel seams run from the corners of the nose up and outward, past the
+    # inside of each eye, to where the ears join the head (the face is a centre gusset),
+    # plus a centre seam down the back.
+    gx = face_seam_x(dy)
+    front = sstep(-0.24, -0.16, dy) * sstep(-0.3, 0.0, dz)
+    gusset = -0.0028 * np.exp(-(((np.abs(dx) - gx) / 0.02) ** 2)) * front
+    back = -0.0065 * np.exp(-((dx / 0.03) ** 2)) * sstep(0.15, -0.15, dz)
+    # Soft panel puffs between the seams (plush stuffing pushes out).
+    puff = 0.004 * np.exp(-(((np.abs(dx) - 0.45) / 0.22) ** 2)) * sstep(-0.1, 0.4, dy) + 0.003 * np.exp(-((dx / 0.18) ** 2)) * sstep(-0.1, 0.5, dy) * np.clip(dz, 0, 1)
+    return r + muzzle + cheeks + gusset + back + puff
 
 
 head = Radial(HEAD_C, head_radius)
 
-EYE_UV = [(-0.5, 0.02), (0.5, 0.02)]
-EYE_R = (0.078, 0.098)
-MUZZLE_C = (0.0, -0.5)
+# Face layout, measured off reference/photos/front.jpg (u, v ~ fractions of the head's half-size):
+# wide-set round eyes, a broad cream muzzle running almost straight across under them
+# and down to the chin, and a big flat mustard triangle nose pointing down into it.
+EYE_UV = [(-0.62, 0.02), (0.62, 0.02)]
+EYE_R = (0.104, 0.13)
+MUZZLE_C = (0.0, -0.55)
 MUZZLE_POLY = [
-    (-0.6, -0.14), (-0.7, -0.38), (-0.6, -0.64), (-0.36, -0.8), (0.0, -0.86), (0.36, -0.8), (0.6, -0.64),
-    (0.7, -0.38), (0.6, -0.14), (0.42, -0.13), (0.2, -0.18), (0.0, -0.24), (-0.2, -0.18), (-0.42, -0.13),
+    (-0.28, -0.235), (-0.52, -0.26), (-0.74, -0.29), (-0.8, -0.4), (-0.75, -0.57), (-0.6, -0.73), (-0.35, -0.86), (0.0, -0.93),
+    (0.35, -0.86), (0.6, -0.73), (0.75, -0.57), (0.8, -0.4), (0.74, -0.29), (0.52, -0.26), (0.28, -0.235), (0.0, -0.32),
 ]
-NOSE_POLY = [(-0.27, -0.1), (0.27, -0.1), (0.0, -0.52)]
-NOSE_C = (0.0, -0.24)
-MOUTH_TOP = -0.52
+NOSE_POLY = [(-0.31, -0.22), (0.0, -0.245), (0.31, -0.22), (0.0, -0.62)]
+NOSE_C = (0.0, -0.35)
+MOUTH_TOP = -0.62
 
 
 def poly_dist(poly, center, u, v):
@@ -542,12 +575,12 @@ def ear_frame(side):
     # and flares gently outward below the cheek, like the real toy's lop ears.
     ctrl = np.array(
         [
-            [0.1, 1.315, -0.04],
-            [0.195, 1.31, -0.03],
-            [0.295, 1.225, -0.015],
-            [0.355, 1.06, 0.0],
-            [0.395, 0.84, 0.01],
-            [0.465, 0.6, 0.01],
+            [0.1, 1.385, -0.04],
+            [0.195, 1.405, -0.03],
+            [0.325, 1.3, -0.015],
+            [0.375, 1.09, 0.0],
+            [0.395, 0.86, 0.01],
+            [0.465, 0.61, 0.01],
             [0.48, 0.42, 0.01],
         ]
     )
@@ -720,7 +753,7 @@ BONES = {
     "root": ((0, 0, 0), None),
     "body": ((0, 0.05, 0), "root"),
     "head": ((0, 0.78, 0.0), "body"),
-    "jaw": ((0, 0.93, 0.2), "head"),
+    "jaw": ((0, 0.86, 0.22), "head"),
     "arm_L": ((0.23, 0.71, 0.08), "chest"),
     "arm_R": ((-0.23, 0.71, 0.08), "chest"),
     "foot_L": ((0.2, 0.17, 0.27), "body"),
@@ -738,7 +771,7 @@ for _side, _tag in ((1, "L"), (-1, "R")):
 def jaw_weight(P):
     """Lower muzzle squashes with the voice."""
     x, y, z = P[:, 0], P[:, 1], P[:, 2]
-    return sstep(0.92, 0.85, y) * sstep(0.12, 0.2, z) * np.exp(-((x / 0.2) ** 2))
+    return sstep(0.87, 0.79, y) * sstep(0.12, 0.2, z) * np.exp(-((x / 0.2) ** 2))
 
 
 def head_weights(P):
@@ -927,12 +960,14 @@ def finish_plush_body(V):
     nose_d = poly_dist(NOSE_POLY, NOSE_C, hu, hv)
     fl = np.where(hfront, np.minimum(fl, sstep(0.95, 1.45, nose_d)), fl)
 
-    # Soft rosy cheeks (sewn-in warmth under the eyes): a gentle tint, not a painted spot.
-    blush = srgb_to_linear("#cf8a72")
-    for sx in (-1, 1):
-        d = in_ellipse(hu, hv, (0.66 * sx, -0.3), (0.2, 0.15), 2.0)
-        c = (1 - sstep(0.2, 1.15, d)) * hfront * 0.8
-        albedo = albedo * (1 - c[:, None]) + blush[None, :] * c[:, None]
+    # The two face-panel seams (see head_radius): pile pressed flat along the stitching, a
+    # touch darker, so they read as fine lines like on the real toy.
+    on_head = owner == 0
+    seam_d = np.abs(np.abs(hu) - face_seam_x(hv))
+    seam_on = on_head & (hv > -0.2) & (HD[:, 2] > -0.25)
+    seam_k = np.where(seam_on, (1 - sstep(0.005, 0.022, seam_d)) * sstep(-0.22, -0.12, hv), 0.0)
+    fl = np.minimum(fl, 1 - 0.45 * seam_k)  # very faint: the pile is only a little flatter
+    albedo = albedo * (1 - 0.07 * seam_k[:, None])
 
     # Tummy patch
     BD = body.local_dir_of(V)
@@ -1019,8 +1054,8 @@ def build():
     NV, NF, nr, _ = patch(
         lambda u, v: HEAD_UV(u, v),
         NOSE_C,
-        outline_from_polygon(NOSE_POLY, NOSE_C, 2),  # crisper corners
-        puffy(0.026, base=0.005, edge_soft=3.0),
+        crisp_outline(NOSE_POLY, NOSE_C, cut=0.12),  # a real triangle: straight sides, softened tips
+        puffy(0.011, base=0.006, edge_soft=4.0),  # a flat appliqué, not a bulb
         rings=12,
         segs=72,
     )
@@ -1028,31 +1063,28 @@ def build():
     add_part("nose", NV, NF, "fur_nose", {"nose": 1.0}, 0.5 + 0.5 * (1 - nr))
 
     # Mouth stitch: line down from the nose tip, then a soft little smile.
-    def thread_on(surface_uv, uv_pts, lift, name, weights_fn, r=0.0032):
+    def thread_on(surface_uv, uv_pts, lift, name, weights_fn, r=0.0032, mat="thread"):
         uv = np.asarray(uv_pts, float)
         dense = np.array([np.interp(np.linspace(0, len(uv) - 1, 40), np.arange(len(uv)), uv[:, k]) for k in range(2)]).T
         P = surface_uv(dense[:, 0], dense[:, 1]) + uv_normal(surface_uv, dense[:, 0], dense[:, 1]) * lift
         V, F = tube(P, np.full(len(P), r), segs=8)
-        add_part(name, V, F, "thread", weights_fn(V), 0.0)
+        add_part(name, V, F, mat, weights_fn(V), 0.0)
 
     m0 = MOUTH_TOP
-    thread_on(HEAD_UV, [(0, m0 + 0.02), (0, m0 - 0.09)], 0.0085, "mouth_line", attached_weights, r=0.0026)
-    thread_on(HEAD_UV, [(-0.13, m0 - 0.1), (-0.07, m0 - 0.125), (-0.02, m0 - 0.115), (0, m0 - 0.09)], 0.0085, "mouth_l", attached_weights, r=0.0026)
-    thread_on(HEAD_UV, [(0.13, m0 - 0.1), (0.07, m0 - 0.125), (0.02, m0 - 0.115), (0, m0 - 0.09)], 0.0085, "mouth_r", attached_weights, r=0.0026)
+    thread_on(HEAD_UV, [(0, m0 + 0.02), (0, m0 - 0.08)], 0.0085, "mouth_line", attached_weights, r=0.0024, mat="thread_tan")
+    thread_on(HEAD_UV, [(-0.14, m0 - 0.09), (-0.08, m0 - 0.115), (-0.025, m0 - 0.105), (0, m0 - 0.08)], 0.0085, "mouth_l", attached_weights, r=0.0024, mat="thread_tan")
+    thread_on(HEAD_UV, [(0.14, m0 - 0.09), (0.08, m0 - 0.115), (0.025, m0 - 0.105), (0, m0 - 0.08)], 0.0085, "mouth_r", attached_weights, r=0.0024, mat="thread_tan")
 
-    # Eyes: glossy embroidered satin ovals with a stitched highlight
+    # Eyes: round black embroidered satin, each with one small white stitched dot
+    # a little above centre, like the real toy.
     for i, (eu, ev) in enumerate(EYE_UV):
-        EV, EF, _, _ = patch(HEAD_UV, (eu, ev), ellipse_outline(*EYE_R), puffy(0.0075, base=0.001, edge_soft=2.5), rings=8, segs=48)
+        EV, EF, _, _ = patch(HEAD_UV, (eu, ev), ellipse_outline(*EYE_R), puffy(0.0065, base=0.001, edge_soft=2.5), rings=8, segs=48)
         eb = "eye_L" if eu > 0 else "eye_R"
         BONES[eb] = (tuple(HEAD_UV(np.array(eu), np.array(ev))), "head")
         add_part(f"eye{i}", EV, EF, "eye", {eb: 1.0}, 0.0)
-        su, sv = eu + 0.022, ev + 0.034
-        SV, SF, _, _ = patch(HEAD_UV, (su, sv), ellipse_outline(0.019, 0.021), puffy(0.0115, base=0.0085), rings=4, segs=24)
+        su, sv = eu - 0.012 * np.sign(eu), ev + 0.032
+        SV, SF, _, _ = patch(HEAD_UV, (su, sv), ellipse_outline(0.018, 0.02), puffy(0.0095, base=0.0072), rings=4, segs=24)
         add_part(f"eye_shine{i}", SV, SF, "eye_shine", {eb: 1.0}, 0.0)
-        # a second, tiny sparkle low on the other side: big, bright, cute eyes
-        s2u, s2v = eu - 0.03, ev - 0.045
-        S2V, S2F, _, _ = patch(HEAD_UV, (s2u, s2v), ellipse_outline(0.011, 0.012), puffy(0.0105, base=0.0078), rings=3, segs=16)
-        add_part(f"eye_shine2_{i}", S2V, S2F, "eye_shine", {eb: 1.0}, 0.0)
 
     # Tummy
 

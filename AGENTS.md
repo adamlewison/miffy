@@ -29,7 +29,9 @@ If any line in a test transcript sounds like a grown-up, it's a bug.
 `public/bunny.glb` is **generated** by `blender/build_oney.py`. Edit the script and rebuild; never hand-edit the GLB. Compare against `reference/photos/`. She must stay recognisably the real toy:
 - one continuous stuffed body: head, arms and legs blended at the seams, never stuck-on parts
 - tan terry fur; cream muzzle, tummy, soles, paw undersides and tail
-- a big mustard triangle nose and black embroidered eyes
+- a big, flat mustard triangle nose (wide top, point down into the muzzle) and round black embroidered eyes with one small white dot, set wide apart
+- a broad, slightly squarish head a little taller than wide, with two very faint seams running from the nose corners up past the eyes to the ear roots
+- **Check the face with numbers, not by eye:** `.bvenv/bin/python tools/face_metrics.py` compares head shape, eye position/size, nose and muzzle against the photo (keep every line within ~8%)
 - long lop ears with beige linings
 - flat mitten paws with finger stitches
 
@@ -107,7 +109,7 @@ Always finish with: `npm run check:types`, `npm run build`, the relevant checks 
 ### A. Change her look (shape, colour, patches, stitches)
 1. Edit `blender/build_oney.py`. Constants are near the top:
    - `COLORS`
-   - face layout: `EYE_UV`, `MUZZLE_POLY`, `NOSE_POLY`, `MOUTH_TOP`
+   - face layout: `EYE_UV`, `EYE_R`, `MUZZLE_POLY`, `NOSE_POLY` (drawn with `crisp_outline` so it stays a real triangle), `MOUTH_TOP`, face seams `face_seam_x`. Then run `tools/face_metrics.py`
    - part shapes: `head_radius`, `body_radius`, `thigh`, `foot`, `ear_frame` / `ear_profile`, `arm_curve` / `arm_dims`
    - gesture-facing details: `PALM`, `paw_stitch_lines`
 2. If you moved arms or ears: `.bvenv/bin/python tools/clearance.py`. Nothing should be negative; keep arms at least 0.015 and ears at least 0.012–0.02 clear.
@@ -189,6 +191,7 @@ db/schema.sql                memories table (auto-created; reference)
 | `python3 tools/sheet.py` | side-by-side contact sheets (with `--crop` for photo details) |
 | `python3 tools/audio/f0.py` | median pitch of WAVs (child ≈ 300–400 Hz) |
 | `.bvenv/bin/python tools/clearance.py` | rest-pose clearances of arms and ears |
+| `.bvenv/bin/python tools/face_metrics.py` | face and head proportions vs the real toy's front photo |
 | `.bvenv/bin/python tools/solve_poses.py` | arm angles for wave/sad/nuzzle/clap/cheer for the current arm shape |
 
 ### Call flow and voice: `src/lib/useBunnyCall.ts`
@@ -281,6 +284,8 @@ None of the helper pages are linked from the call UI.
 ---
 
 ## 6. Lessons learned (read before you repeat them)
+- **Measure the face; don't eyeball it.** The head was once 17% too squat with eyes 13% too close and ~20% too small, and it still "looked fine" in screenshots. `tools/face_metrics.py` caught it.
+- **`outline_from_polygon` rounds and bulges shapes** (it interpolates the radius by angle and smooths the corners). Use `crisp_outline` for anything with straight sides, like the nose, or it becomes a blob.
 - **Compare with the photos at the right resolution.** They're 1932×2576; use fractional crops (`tools/sheet.py --crop`).
 - **Glossy renders are not the toy.** Judge the look with fur on (`tools/shots.cjs`), not only from Blender previews.
 - **Vertex colours must be the active *and* render colour attribute** at export (the `export()` helper does this), or `COLOR_0` silently disappears and the body renders near-black.
