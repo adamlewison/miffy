@@ -181,7 +181,7 @@ db/schema.sql                memories table (auto-created; reference)
 | `python3 tools/sheet.py` | side-by-side contact sheets (with `--crop` for photo details) |
 | `python3 tools/audio/f0.py` | median pitch of WAVs (child ≈ 300–400 Hz) |
 | `.bvenv/bin/python tools/clearance.py` | rest-pose clearances of arms and ears |
-| `.bvenv/bin/python tools/solve_poses.py` | arm angles for wave/sad/nuzzle for the current arm shape |
+| `.bvenv/bin/python tools/solve_poses.py` | arm angles for wave/sad/nuzzle/clap/cheer for the current arm shape |
 
 ### Call flow and voice: `src/lib/useBunnyCall.ts`
 - **Session setup:** `/api/session` (`src/app/api/session/route.ts`) creates the ephemeral key (`POST /v1/realtime/client_secrets`) with semantic VAD, near-field noise reduction, and transcription with name hints. It returns `instructions`, `voice`, `model` and `pitchSemitones`.
@@ -283,7 +283,7 @@ None of the helper pages are linked from the call UI.
 
 ## 7. Open items
 - `src/bunny.config.ts` still has `TODO` memories and inside jokes. Adam should fill these in; they matter most.
-- No live call has been made on a real phone yet, so phone performance with fur is untested. If it's laggy, try `?shells=6`, then lower the mobile default in `fur.ts` (`defaultShellCount`).
+- No live call has been made on a real phone yet, so phone performance with fur is untested. `GlbBunny.tsx` now drops fur layers automatically (×0.7 every 3 s while below 24 fps on phones / 40 on desktop, floor 4); `?shells=N` pins the count and disables this. If it still looks laggy, lower `defaultShellCount` in `fur.ts`.
 - `OPENAI_API_KEY` is set on Vercel (calls work). **Turso is not**: the live site reports `"backend":"memory"` at `/api/memories`, so memories vanish on every cold start. Add `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in Vercel.
 - The mouth and toe stitches still use the darker `thread` colour (the paw stitches are tan).
 - When she waves, the raised arm pushes her left ear quite far out sideways (the collision solve doing its job). A softer wave target or letting the ear swing back as well as out would look nicer.

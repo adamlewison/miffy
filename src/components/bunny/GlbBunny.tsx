@@ -1,11 +1,12 @@
 "use client";
 
 import * as THREE from "three";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGLTF } from "@react-three/drei";
+import { useFrame } from "@react-three/fiber";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { BONE_NAMES, useBunnyAnimator, type Rig } from "./rig";
-import { applyFur } from "./fur";
+import { applyFur, defaultShellCount } from "./fur";
 import { BunnySolid, type CollisionJSON } from "./collide";
 
 export const BUNNY_GLB = "/bunny.glb";
@@ -71,7 +72,24 @@ export function GlbBunny({ url = BUNNY_GLB }: { url?: string }) {
   }, [url]);
 
   // Plush fur (shell rendering) on every fabric part.
-  useEffect(() => applyFur(scene), [scene]);
+  // Adaptive quality: if the frame rate sags (a slow phone), quietly drop fur layers
+  // until it's smooth again. An explicit ?shells=N in the URL turns this off.
+  const [shells, setShells] = useState(defaultShellCount);
+  const perf = useRef({ acc: 0, n: 0, since: 0 });
+  useFrame((_, dt) => {
+    if (new URLSearchParams(window.location.search).has("shells")) return;
+    const p = perf.current;
+    if (dt > 0.25) return; // tab was hidden / first frames compiling shaders
+    p.acc += dt;
+    p.n++;
+    p.since += dt;
+    if (p.since < 3) return;
+    const fps = p.n / p.acc;
+    p.acc = p.n = p.since = 0;
+    const target = window.matchMedia("(pointer: coarse)").matches ? 24 : 40;
+    if (fps < target) setShells((s) => (s > 4 ? Math.max(4, Math.round(s * 0.7)) : s));
+  });
+  useEffect(() => applyFur(scene, shells), [scene, shells]);
 
   // Long lop ears hang down: motion directions flip and angles are smaller.
   // Arm poses solved for Oney's proportions (blender/build_oney.py).
