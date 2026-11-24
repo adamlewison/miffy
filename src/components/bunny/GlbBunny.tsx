@@ -1,11 +1,12 @@
 "use client";
 
 import * as THREE from "three";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useGLTF } from "@react-three/drei";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { BONE_NAMES, useBunnyAnimator, type Rig } from "./rig";
 import { applyFur } from "./fur";
+import { BunnySolid, type CollisionJSON } from "./collide";
 
 export const BUNNY_GLB = "/bunny.glb";
 const TARGET_HEIGHT = 1.42;
@@ -50,6 +51,25 @@ export function GlbBunny({ url = BUNNY_GLB }: { url?: string }) {
     return { scene, rig, scale, offset };
   }, [gltf.scene]);
 
+  // Collision data generated alongside the model (blender/build_oney.py).
+  const solid = useRef<BunnySolid | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch(url.replace(/\.glb$/, ".collision.json"))
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: CollisionJSON | null) => {
+        if (alive && j) {
+          solid.current = new BunnySolid(j);
+          if (new URLSearchParams(window.location.search).has("debug"))
+            (window as unknown as { __oneySolid: BunnySolid }).__oneySolid = solid.current;
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [url]);
+
   // Plush fur (shell rendering) on every fabric part.
   useEffect(() => applyFur(scene), [scene]);
 
@@ -61,10 +81,12 @@ export function GlbBunny({ url = BUNNY_GLB }: { url?: string }) {
     earAmount: 0.45,
     earSad: 0.2,
     earMaxIn: 0.03,
+    solid: () => solid.current,
     poses: {
-      wave: [-2.22, 0.28, 1.0],
-      sad: [-1.94, -0.4, 1.0],
-      nuzzle: [-0.76, -0.22, 1.0],
+      // Paw comes up in front of the ear, beside her cheek.
+      wave: [-1.93, 0.1, 1.0],
+      sad: [-1.8, -0.46, 1.0],
+      nuzzle: [-0.72, -0.26, 1.0],
     },
   });
 

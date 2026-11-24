@@ -101,6 +101,8 @@ It then:
 - exports `public/bunny.glb` (about 3 MB)
 - with `--renders`, writes Cycles previews from the same angles as the photos
 
+**She's solid.** The build also writes `public/bunny.collision.json`, which holds distance maps of her head and body plus collision spheres along her arms and ears. Every frame, after she's posed, `src/components/bunny/collide.ts` rotates any arm or ear that would go inside her just far enough to sit on the surface instead. Her paws rest on her face, and her ears brush aside around her arms. The spheres are calibrated so the rest pose never collides. `/preview?debug=1` exposes the solver (`window.__oneySolid.raw` / `.residual`) for tests.
+
 **Fur** is rendered live in the browser by `src/components/bunny/fur.ts` using shell texturing:
 - Every fabric part is redrawn 10 times on phones and 20 on desktop, each layer pushed slightly further out along the surface.
 - Strands are cut out of 3D cell noise on the rest-pose surface, so they move with her.

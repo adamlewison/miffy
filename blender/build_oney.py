@@ -534,11 +534,11 @@ def ear_frame(side):
         [
             [0.11, 1.3, -0.045],
             [0.215, 1.325, -0.03],
-            [0.305, 1.24, -0.005],
-            [0.35, 1.04, 0.02],
-            [0.375, 0.78, 0.03],
-            [0.385, 0.52, 0.03],
-            [0.38, 0.36, 0.03],
+            [0.31, 1.24, -0.005],
+            [0.37, 1.04, 0.015],
+            [0.418, 0.78, 0.015],
+            [0.428, 0.52, 0.015],
+            [0.418, 0.36, 0.015],
         ]
     )
     ctrl[:, 0] *= side
@@ -973,6 +973,99 @@ def build():
     BONES["ear_R_2"] = (tuple(ear_info["R"][1]), "ear_R_1")
 
 
+# ----------------------------------------------------------------------------
+# Collision data for the browser: she must behave like one solid toy
+# ----------------------------------------------------------------------------
+
+
+def body_parts_sdf(P):
+    return np.minimum.reduce([sdf_radial(body, P)] + [sdf_radial(x(side), P) for side in (1, -1) for x in (thigh, foot)])
+
+
+def arms_sdf(P):
+    out = np.full(len(P), 9.0)
+    for side in (1, -1):
+        C, ts = arm_curve(side)
+        d, _ = sdf_arm(C, arm_radii(ts), ts, P)
+        out = np.minimum(out, d)
+    return out
+
+
+def sdf_grid(fn, lo, hi, cell, pivot):
+    lo, hi = np.asarray(lo, float), np.asarray(hi, float)
+    dims = np.ceil((hi - lo) / cell).astype(int) + 1
+    xs = [lo[i] + np.arange(dims[i]) * cell for i in range(3)]
+    X, Y, Z = np.meshgrid(*xs, indexing="ij")
+    d = np.clip(fn(np.stack([X, Y, Z], -1).reshape(-1, 3)), -0.25, 0.25)
+    return {
+        "origin": np.round(lo - np.asarray(pivot), 4).tolist(),
+        "cell": cell,
+        "dims": dims.tolist(),  # index = (ix * ny + iy) * nz + iz
+        "mm": np.round(d * 1000).astype(int).tolist(),
+    }
+
+
+def collision_data(report=True):
+    """
+    Distance grids for the head (in head-bone space) and body+legs (body-bone space),
+    plus collision spheres along each arm and ear (in their bone's space). Each sphere's
+    radius is capped by its clearance in the rest pose, so standing still never collides.
+    """
+    head_piv = np.array(BONES["head"][0])
+    body_piv = np.array(BONES["body"][0])
+    data = {
+        "head": sdf_grid(lambda P: sdf_radial(head, P), HEAD_C - 0.36, HEAD_C + 0.36, 0.03, head_piv),
+        "body": sdf_grid(body_parts_sdf, (-0.5, -0.06, -0.42), (0.5, 0.86, 0.66), 0.03, body_piv),
+        "samples": {},
+    }
+    fur = 0.012
+
+    def clearance(P, exclude_arms=False):
+        d = np.minimum(sdf_radial(head, P), body_parts_sdf(P))
+        return d if exclude_arms else np.minimum(d, arms_sdf(P))
+
+    for side, bone in ((1, "arm_L"), (-1, "arm_R")):
+        C, ts = arm_curve(side)
+        r = arm_radii(ts)
+        piv = np.array(BONES[bone][0])
+        out = []
+        for t in (0.3, 0.42, 0.55, 0.68, 0.8, 0.9, 0.97):
+            i = int(np.searchsorted(ts, t))
+            P = C[i]
+            free = float(clearance(P[None], exclude_arms=True)[0])
+            rad = min(r[i] + fur, free - 0.002)
+            if report:
+                print(f"[collide] {bone} t={t:.2f} clearance={free - r[i]:+.3f}")
+            if rad > 0.02:
+                out.append([*np.round(P - piv, 4).tolist(), round(rad, 4)])
+        data["samples"][bone] = out
+    for side, tag in ((1, "L"), (-1, "R")):
+        C, ts, T, W, N = ear_frame(side)
+        width, thick = ear_profile(ts)
+        p1 = np.array(BONES[f"ear_{tag}_1"][0])
+        p2 = np.array(BONES[f"ear_{tag}_2"][0])
+        s1, s2 = [], []
+        worst = 9.0
+        for t in (0.22, 0.32, 0.42, 0.55, 0.66, 0.77, 0.87, 0.95):
+            i = int(np.searchsorted(ts, t))
+            for lat in (-0.36, 0.0, 0.36):
+                P = C[i] + W[i] * lat * width[i]
+                free = float(clearance(P[None])[0])
+                worst = min(worst, free - 0.5 * thick[i])
+                rad = min(0.5 * thick[i] + fur, free - 0.002)
+                if rad <= 0.012:
+                    continue
+                if t < 0.45:
+                    s1.append([*np.round(P - p1, 4).tolist(), round(rad, 4)])
+                else:
+                    s2.append([*np.round(P - p2, 4).tolist(), round(rad, 4)])
+        if report:
+            print(f"[collide] ear_{tag} worst rest clearance={worst:+.3f} samples={len(s1)}+{len(s2)}")
+        data["samples"][f"ear_{tag}_1"] = s1
+        data["samples"][f"ear_{tag}_2"] = s2
+    return data
+
+
 def join_by_material():
     groups = {}
     for obj, mat in PARTS:
@@ -1169,6 +1262,12 @@ def main():
     tris = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in objs)
     print(f"[oney] meshes={len(objs)} triangles={tris}")
     export(args.out)
+    import json
+
+    col_path = os.path.splitext(args.out)[0] + ".collision.json"
+    with open(col_path, "w") as fh:
+        json.dump(collision_data(), fh, separators=(",", ":"))
+    print(f"[oney] wrote {col_path} ({os.path.getsize(col_path) / 1e3:.0f} kB)")
     print(f"[oney] wrote {args.out} ({os.path.getsize(args.out) / 1e6:.2f} MB)")
     if args.renders:
         render_previews(args.renders, objs)

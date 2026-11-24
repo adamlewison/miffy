@@ -79,6 +79,8 @@ export type RigOptions = {
   earSad?: number;
   /** Max inward swing (rad) — long lop ears hang beside the cheeks and must never cross the face. */
   earMaxIn?: number;
+  /** Solid-body collision (keeps arms and ears out of her head/body). */
+  solid?: () => { solve: (rig: Rig) => void } | null;
   /** Gesture arm poses tuned to the model's proportions. */
   poses?: Partial<Poses>;
 };
@@ -361,5 +363,8 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
     };
     arm(rig.armL, 1, 0);
     arm(rig.armR, -1, 1.7);
+
+    // ---- Solid body: nothing passes through anything else ------------------
+    opts.solid?.()?.solve(rig);
   });
 }
