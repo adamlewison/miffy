@@ -39,7 +39,7 @@ Arms and ears never pass through her head, body, legs or each other. This is enf
 
 ## 2. How it works (the simple version)
 
-1. **Her body is code.** `blender/build_oney.py` runs Blender headless (as a Python library) and builds her from maths: each part is a smooth 3D shape sized from the photos, the parts are blended into one stuffed surface, and patches and stitches are laid on top. It also bakes soft shadows, adds a 10-bone skeleton, and exports `public/bunny.glb` plus `public/bunny.collision.json`.
+1. **Her body is code.** `blender/build_oney.py` runs Blender headless (as a Python library) and builds her from maths: each part is a smooth 3D shape sized from the photos, the parts are blended into one stuffed surface, and patches and stitches are laid on top. It also bakes soft shadows, adds a 21-bone skeleton, and exports `public/bunny.glb` plus `public/bunny.collision.json`.
 2. **Her fur is drawn live.** `fur.ts` redraws each fabric part 10 times on phones and 20 on desktop, each layer pushed slightly further out and cut into strands, so she looks fluffy. The GLB itself is smooth.
 3. **Her movement is code.** `rig.ts` turns her bones every frame: breathing, springy ears, a head bob from her voice volume, and gesture poses. `collide.ts` then nudges any arm or ear out of her body.
 4. **Her voice is OpenAI Realtime.** Audio goes straight from the phone to OpenAI over WebRTC. Our server only mints a 10-minute key and builds her instructions (character sheet plus memories). Her reply audio is pitch-shifted on the phone and drives the talking animation.
@@ -124,6 +124,7 @@ Always finish with: `npm run check:types`, `npm run build`, the relevant checks 
    - mode targets: idle, listening, thinking, talking
    - tricks: `bunnyState.trick`
    - held gestures: `bunnyState.gesture`, plus `GESTURE_SECONDS` in `src/lib/bunnyState.ts`
+   (new gestures: add the pose to `TARGETS` in `tools/solve_poses.py`, to `Poses`/`DEFAULT_POSES` in `rig.ts`, and blend it in `arm()`)
 2. **Per-model settings** live in `src/components/bunny/GlbBunny.tsx`: the lop-ear flags (`earXSign`, `earAmount`, `earSad`, `earMaxIn`) and the arm `poses`.
 3. **Arm poses for the current arm shape:** `.bvenv/bin/python tools/solve_poses.py` (edit `TARGETS` for new gestures), then paste the output into `poses`.
 4. **Expose it to her:** add it to the `express` tool enum in `src/lib/useBunnyCall.ts` and `tools/voice-test.mts`, and describe when to use it in `src/lib/prompt.ts`.
@@ -190,7 +191,7 @@ db/schema.sql                memories table (auto-created; reference)
 - **Picking up:** she waves automatically and speaks first, using a system message plus `response.create`.
 - **Tools:**
   - `get_time_of_day`
-  - `express` (wave, nuzzle, sad, hop, wiggle, spin, ear_flick)
+  - `express` (wave, nuzzle, sad, hop, wiggle, spin, ear_flick, giggle, clap, cheer, shy, sleepy)
   - `remember_this`
 - **Camera:** the camera button sends a small frame when Mommy starts speaking, at most one every 4 s.
 - **Hanging up:** the transcript goes to `/api/memories` with keepalive. Facts are extracted and the transcript is discarded. No audio is ever stored.
@@ -219,10 +220,14 @@ Turso/libSQL. The table is auto-created (`db/schema.sql` is for reference). The 
 | Wave | left paw up beside her cheek |
 | Sad | head bows, paws to her face |
 | Nuzzle | leans in, rubs her head, arms forward |
-| Tricks | hop, ear flick, wiggle, spin |
+| Tricks | hop, ear flick, wiggle, spin, giggle |
+| Clap / Cheer / Shy / Sleepy | paws clap together / arms thrown up / bashful head-tilt with paws to cheeks / yawn and droop |
+| Always on | blinking (incl. double blinks), eye gaze, nose sniffs, tail wag, foot taps, floppy wrists, a `happy` level that squints eyes, wags the tail and kicks the feet |
 
-**Skeleton contract:**
-- Bones: `root`, `body`, `head`, `jaw`, `ear_L_1`/`ear_L_2`, `ear_R_1`/`ear_R_2`, `arm_L`/`arm_R` (aliases in `BONE_NAMES`). "L" is +x.
+**Skeleton contract (21 bones):**
+- Bones: `root` → `body` → `chest` (spine; breathing, lean, head follow-through) → `head` → `jaw`, `nose` (sniffs), `eye_L`/`eye_R` (blink, squint, gaze: the eye patches are skinned to these), and three-segment ears `ear_{L,R}_1/2/3` (the tip flutters). `arm_{L,R}` (child of `chest`) → `paw_{L,R}` (floppy wrist, wave from the wrist). `foot_{L,R}` (kicks, taps) and `tail` (wag) hang off `body`. Aliases in `BONE_NAMES`. "L" is +x.
+- Weights: `plush_weights` splits the body between `body`/`chest`/`foot_*`, and each arm between `arm_*` and `paw_*` (wrist at `PAW_T`). Ear weights come from `ear_w`.
+- Collision samples: `arm_*` (upper arm), `paw_*` (t ≥ `PAW_T`+0.03) and `ear_*_1/2/3`; `collide.ts` resolves an arm with its paw spheres, then the paw alone.
 - Every bone's local axes are **world-aligned** (in Blender each bone points straight up with roll 0), so rotations mean the same thing for both bunnies:
   - head: X nod, Y turn, Z tilt
   - arms and ears: X forward/back, Z out/in

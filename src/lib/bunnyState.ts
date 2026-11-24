@@ -4,11 +4,11 @@
  */
 export type Mode = "idle" | "listening" | "thinking" | "talking";
 /** Quick one-shot moves. */
-export type Trick = "hop" | "ear_flick" | "wiggle" | "spin";
+export type Trick = "hop" | "ear_flick" | "wiggle" | "spin" | "giggle";
 /** Held poses that ease in, hold, then ease out. */
-export type Gesture = "wave" | "sad" | "nuzzle";
+export type Gesture = "wave" | "sad" | "nuzzle" | "clap" | "cheer" | "shy" | "sleepy";
 
-export const GESTURE_SECONDS: Record<Gesture, number> = { wave: 2.6, sad: 4.5, nuzzle: 3.8 };
+export const GESTURE_SECONDS: Record<Gesture, number> = { wave: 2.6, sad: 4.5, nuzzle: 3.8, clap: 2.6, cheer: 2.4, shy: 3.4, sleepy: 4.2 };
 
 export const bunnyState = {
   mode: "idle" as Mode,

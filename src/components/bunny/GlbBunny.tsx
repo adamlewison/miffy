@@ -87,6 +87,8 @@ export function GlbBunny({ url = BUNNY_GLB }: { url?: string }) {
       wave: [-1.93, 0.1, 1.0],
       sad: [-1.8, -0.46, 1.0],
       nuzzle: [-0.72, -0.26, 1.0],
+      clap: [-0.66, -0.42, 1.0],
+      cheer: [-2.28, 0.28, 1.0],
     },
   });
 

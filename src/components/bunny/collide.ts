@@ -98,7 +98,7 @@ export class BunnySolid {
    */
   private resolve(
     bone: THREE.Object3D | null,
-    samples: Sample[] | undefined,
+    sets: [THREE.Object3D | null, Sample[] | undefined][],
     grids: [SdfGrid, THREE.Object3D | null][],
     spheres: Sphere[],
     worldScale: number,
@@ -106,12 +106,14 @@ export class BunnySolid {
     sphereBias: THREE.Vector3 | null = null,
     iterations = 6,
   ) {
-    if (!bone || !samples?.length) return;
+    if (!bone || !sets.some(([, ss]) => ss?.length)) return;
     for (let it = 0; it <= iterations; it++) {
       let worst = 0;
       let what = "";
-      for (const s of samples) {
-        _p.copy(s.p).applyMatrix4(bone.matrixWorld);
+      for (const [sb, samples] of sets) {
+       if (!sb || !samples) continue;
+       for (const s of samples) {
+        _p.copy(s.p).applyMatrix4(sb.matrixWorld);
         for (const [g, gb] of grids) {
           if (!gb) continue;
           _q.copy(_p);
@@ -142,6 +144,7 @@ export class BunnySolid {
             _bestT.copy(sp.c).addScaledVector(_n, R + 0.002 * worldScale);
           }
         }
+       }
       }
       if (it === 0) this.raw = Math.max(this.raw, worst);
       if (it === iterations || worst <= 1e-4) {
@@ -167,10 +170,14 @@ export class BunnySolid {
     body: THREE.Object3D | null;
     armL: THREE.Object3D | null;
     armR: THREE.Object3D | null;
+    pawL?: THREE.Object3D | null;
+    pawR?: THREE.Object3D | null;
     earL1: THREE.Object3D | null;
     earL2: THREE.Object3D | null;
+    earL3?: THREE.Object3D | null;
     earR1: THREE.Object3D | null;
     earR2: THREE.Object3D | null;
+    earR3?: THREE.Object3D | null;
   }) {
     if (!rig.root) return;
     this.residual = 0;
@@ -182,25 +189,34 @@ export class BunnySolid {
       [this.head, rig.head],
       [this.body, rig.body],
     ];
-    // Arms vs head + body
-    this.resolve(rig.armL, this.samples.arm_L, solid, [], ws, "arm_L");
-    this.resolve(rig.armR, this.samples.arm_R, solid, [], ws, "arm_R");
+    const S = this.samples;
+    // Arms (upper arm + paw) vs head + body; the wrist bone may then bend a little more on its own.
+    this.resolve(rig.armL, [[rig.armL, S.arm_L], [rig.pawL ?? null, S.paw_L]], solid, [], ws, "arm_L");
+    this.resolve(rig.armR, [[rig.armR, S.arm_R], [rig.pawR ?? null, S.paw_R]], solid, [], ws, "arm_R");
+    this.resolve(rig.pawL ?? null, [[rig.pawL ?? null, S.paw_L]], solid, [], ws, "paw_L", null, 4);
+    this.resolve(rig.pawR ?? null, [[rig.pawR ?? null, S.paw_R]], solid, [], ws, "paw_R", null, 4);
     // Arm spheres (in their final pose) become obstacles for the ears.
     const armSpheres: Sphere[] = [];
     for (const [bone, key] of [
       [rig.armL, "arm_L"],
+      [rig.pawL, "paw_L"],
       [rig.armR, "arm_R"],
+      [rig.pawR, "paw_R"],
     ] as const) {
       if (!bone) continue;
-      for (const s of this.samples[key] ?? []) armSpheres.push({ c: s.p.clone().applyMatrix4(bone.matrixWorld), r: s.r });
+      for (const s of S[key] ?? []) armSpheres.push({ c: s.p.clone().applyMatrix4(bone.matrixWorld), r: s.r });
     }
-    for (const [b1, b2, k, side] of [
-      [rig.earL1, rig.earL2, "L", 1],
-      [rig.earR1, rig.earR2, "R", -1],
+    for (const [b1, b2, b3, k, side] of [
+      [rig.earL1, rig.earL2, rig.earL3 ?? null, "L", 1],
+      [rig.earR1, rig.earR2, rig.earR3 ?? null, "R", -1],
     ] as const) {
       const out = rig.head ? new THREE.Vector3(side, 0, -0.35).transformDirection(rig.head.matrixWorld).multiplyScalar(0.9) : null;
-      this.resolve(b1, this.samples[`ear_${k}_1`], solid, armSpheres, ws, `ear_${k}_1`, out);
-      this.resolve(b2, this.samples[`ear_${k}_2`], solid, armSpheres, ws, `ear_${k}_2`, out);
+      const s1 = S[`ear_${k}_1`];
+      const s2 = S[`ear_${k}_2`];
+      const s3 = S[`ear_${k}_3`];
+      this.resolve(b1, [[b1, s1], [b2, s2], [b3, s3]], solid, armSpheres, ws, `ear_${k}_1`, out);
+      this.resolve(b2, [[b2, s2], [b3, s3]], solid, armSpheres, ws, `ear_${k}_2`, out);
+      this.resolve(b3, [[b3, s3]], solid, armSpheres, ws, `ear_${k}_3`, out);
     }
   }
 }

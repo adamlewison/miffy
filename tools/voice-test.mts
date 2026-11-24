@@ -89,7 +89,7 @@ const agent = new RealtimeAgent({
     tool({
       name: "express",
       description: "Move your body on screen, like natural body language. Call it silently before speaking; never mention or describe the movement — she can see it.",
-      parameters: z.object({ move: z.enum(["wave", "nuzzle", "sad", "hop", "wiggle", "spin", "ear_flick"]) }),
+      parameters: z.object({ move: z.enum(["wave", "nuzzle", "sad", "hop", "wiggle", "spin", "ear_flick", "giggle", "clap", "cheer", "shy", "sleepy"]) }),
       execute: async ({ move }) => (calls.push(`express:${move}`), "done"),
     }),
     tool({ name: "remember_this", description: "Save an important fact about her life (plans, feelings, people, events). One short third-person sentence.", parameters: z.object({ fact: z.string() }), execute: async ({ fact }) => (calls.push(`remember:"${fact}"`), "remembered") }),

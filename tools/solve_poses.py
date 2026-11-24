@@ -25,6 +25,8 @@ TARGETS = {
     "wave": (0.06, 0.32, 0.26),  # paw up beside her cheek, in front of the ear
     "sad": (-0.12, 0.27, 0.27),  # paws over her face (head also bows)
     "nuzzle": (-0.05, -0.12, 0.36),  # arms forward and in, a cuddle
+    "clap": (-0.17, -0.12, 0.33),  # paws meeting in front of her chest
+    "cheer": (0.1, 0.3, 0.1),  # arms thrown up and out
 }
 
 

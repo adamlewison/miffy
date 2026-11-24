@@ -70,8 +70,10 @@ function Ear({ side, rig1, rig2, tan, cream }: { side: 1 | -1; rig1: (o: THREE.G
 
 export function ProceduralBunny() {
   const rig = useRef<Rig>({
-    root: null, body: null, head: null, jaw: null,
-    earL1: null, earL2: null, earR1: null, earR2: null, armL: null, armR: null,
+    root: null, body: null, chest: null, head: null, jaw: null,
+    earL1: null, earL2: null, earL3: null, earR1: null, earR2: null, earR3: null,
+    armL: null, armR: null, pawL: null, pawR: null, footL: null, footR: null,
+    tail: null, eyeL: null, eyeR: null, nose: null,
   });
   const set = (k: keyof Rig) => (o: THREE.Object3D | null) => {
     rig.current[k] = o;

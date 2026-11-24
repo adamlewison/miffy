@@ -37,8 +37,8 @@ export default function Preview() {
   }, [mode]);
 
   const modes: Mode[] = ["idle", "listening", "thinking", "talking"];
-  const tricks: Trick[] = ["hop", "ear_flick", "wiggle", "spin"];
-  const gestures: Gesture[] = ["wave", "sad", "nuzzle"];
+  const tricks: Trick[] = ["hop", "ear_flick", "wiggle", "spin", "giggle"];
+  const gestures: Gesture[] = ["wave", "sad", "nuzzle", "clap", "cheer", "shy", "sleepy"];
   return (
     <main className="app" style={{ "--bg-top": bunny.scene.backgroundTop, "--bg-bottom": bunny.scene.backgroundBottom } as React.CSSProperties}>
       <div className="scene visible">

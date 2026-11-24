@@ -51,13 +51,13 @@ function makeTools() {
         "Move your body on screen, like natural body language. Call it silently before speaking; never mention or describe the movement — she can see it.",
       parameters: z.object({
         move: z
-          .enum(["wave", "nuzzle", "sad", "hop", "wiggle", "spin", "ear_flick"])
+          .enum(["wave", "nuzzle", "sad", "hop", "wiggle", "spin", "ear_flick", "giggle", "clap", "cheer", "shy", "sleepy"])
           .describe(
-            "wave = tiny paw wave beside your face (hello/goodbye); nuzzle = lean in and snuggle (cuddles, comfort, love); sad = sag your head and cover your face with your paws; hop = little jump; wiggle = happy wiggle; spin = twirl; ear_flick = both ears flick up",
+            "wave = tiny paw wave beside your face (hello/goodbye); nuzzle = lean in and snuggle (cuddles, comfort, love); sad = sag your head and cover your face with your paws; hop = little jump; wiggle = happy wiggle; spin = twirl; ear_flick = both ears flick up; giggle = shaky happy giggle with squeezed-shut eyes; clap = clap your paws; cheer = throw your arms up hooray; shy = hide a little bashfully; sleepy = yawn and droop",
           ),
       }),
       execute: async ({ move }) => {
-        if (move === "wave" || move === "nuzzle" || move === "sad") triggerGesture(move as Gesture);
+        if (["wave", "nuzzle", "sad", "clap", "cheer", "shy", "sleepy"].includes(move)) triggerGesture(move as Gesture);
         else triggerTrick(move as Trick);
         return "done";
       },

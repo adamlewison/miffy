@@ -702,9 +702,18 @@ BONES = {
     "body": ((0, 0.05, 0), "root"),
     "head": ((0, 0.78, 0.0), "body"),
     "jaw": ((0, 0.93, 0.2), "head"),
-    "arm_L": ((0.23, 0.71, 0.08), "body"),
-    "arm_R": ((-0.23, 0.71, 0.08), "body"),
+    "arm_L": ((0.23, 0.71, 0.08), "chest"),
+    "arm_R": ((-0.23, 0.71, 0.08), "chest"),
+    "foot_L": ((0.2, 0.17, 0.27), "body"),
+    "foot_R": ((-0.2, 0.17, 0.27), "body"),
+    "tail": ((0, 0.2, -0.27), "body"),
 }
+BONES["chest"] = ((0, 0.5, 0.0), "body")
+BONES["head"] = ((0, 0.78, 0.0), "chest")
+PAW_T = 0.62  # the wrist: where the paw bone starts along the arm
+for _side, _tag in ((1, "L"), (-1, "R")):
+    _C, _ts = arm_curve(_side)
+    BONES[f"paw_{_tag}"] = (tuple(_C[int(np.searchsorted(_ts, PAW_T))]), f"arm_{_tag}")
 
 
 def jaw_weight(P):
@@ -809,7 +818,24 @@ def plush_weights(P, f, with_arms=True):
     j = jaw_weight(P) * wh
     w["head"] = wh - j
     w["jaw"] = j
-    w["body"] = np.clip(1 - arm_total - wh, 0, 1)
+    wb = np.clip(1 - arm_total - wh, 0, 1)
+    # Paw (wrist) takes over the lower arm.
+    for side, tag in ((1, "L"), (-1, "R")):
+        wp = w[f"arm_{tag}"] * sstep(0.5, 0.72, f[f"armt{side}"]) if with_arms else 0.0
+        if with_arms:
+            w[f"paw_{tag}"] = wp
+            w[f"arm_{tag}"] = w[f"arm_{tag}"] - wp
+    # Feet pivot at the ankle.
+    d_rest = np.minimum.reduce([f["body"], f["thigh1"], f["thigh-1"]])
+    low = sstep(0.36, 0.27, P[:, 1])
+    for side, tag in ((1, "L"), (-1, "R")):
+        wf = sstep(-0.03, 0.03, d_rest - f[f"foot{side}"]) * low * wb
+        w[f"foot_{tag}"] = wf
+        wb = wb - wf
+    # Spine: the upper body follows the chest bone.
+    wc = wb * sstep(0.36, 0.72, P[:, 1])
+    w["chest"] = wc
+    w["body"] = np.clip(wb - wc, 0, 1)
     return w
 
 
@@ -882,6 +908,13 @@ def finish_plush_body(V):
     nose_d = poly_dist(NOSE_POLY, NOSE_C, hu, hv)
     fl = np.where(hfront, np.minimum(fl, sstep(0.95, 1.45, nose_d)), fl)
 
+    # Soft rosy cheeks (sewn-in warmth under the eyes): a gentle tint, not a painted spot.
+    blush = srgb_to_linear("#cf8a72")
+    for sx in (-1, 1):
+        d = in_ellipse(hu, hv, (0.66 * sx, -0.3), (0.2, 0.15), 2.0)
+        c = (1 - sstep(0.2, 1.15, d)) * hfront * 0.8
+        albedo = albedo * (1 - c[:, None]) + blush[None, :] * c[:, None]
+
     # Tummy patch
     BD = body.local_dir_of(V)
     bfront = (BD[:, 2] > 0.05) & (owner == 1)
@@ -918,6 +951,18 @@ def finish_plush_body(V):
 # ----------------------------------------------------------------------------
 # Build
 # ----------------------------------------------------------------------------
+
+
+def foot_bone(side):
+    return "foot_L" if side > 0 else "foot_R"
+
+
+def ear_w(tp, tag):
+    """Three-segment ear weights: base (ear_1), middle (ear_2), tip (ear_3), plus the head at the root."""
+    wa = sstep(0.3, 0.62, tp)
+    w3 = sstep(0.62, 0.88, tp)
+    wh = 1 - sstep(0.0, 0.1, tp)
+    return {f"ear_{tag}_1": (1 - wa) * (1 - wh), f"ear_{tag}_2": wa - w3 * wa, f"ear_{tag}_3": w3 * wa, "head": wh}
 
 
 def build():
@@ -957,7 +1002,8 @@ def build():
         rings=12,
         segs=72,
     )
-    add_part("nose", NV, NF, "fur_nose", attached_weights(NV), 0.5 + 0.5 * (1 - nr))
+    BONES["nose"] = (tuple(HEAD_UV(np.array(NOSE_C[0]), np.array(NOSE_C[1]))), "head")
+    add_part("nose", NV, NF, "fur_nose", {"nose": 1.0}, 0.5 + 0.5 * (1 - nr))
 
     # Mouth stitch: line down from the nose tip, then a soft little smile.
     def thread_on(surface_uv, uv_pts, lift, name, weights_fn, r=0.0032):
@@ -975,10 +1021,16 @@ def build():
     # Eyes: glossy embroidered satin ovals with a stitched highlight
     for i, (eu, ev) in enumerate(EYE_UV):
         EV, EF, _, _ = patch(HEAD_UV, (eu, ev), ellipse_outline(*EYE_R), puffy(0.0075, base=0.001, edge_soft=2.5), rings=8, segs=48)
-        add_part(f"eye{i}", EV, EF, "eye", attached_weights(EV), 0.0)
+        eb = "eye_L" if eu > 0 else "eye_R"
+        BONES[eb] = (tuple(HEAD_UV(np.array(eu), np.array(ev))), "head")
+        add_part(f"eye{i}", EV, EF, "eye", {eb: 1.0}, 0.0)
         su, sv = eu + 0.022, ev + 0.034
         SV, SF, _, _ = patch(HEAD_UV, (su, sv), ellipse_outline(0.019, 0.021), puffy(0.0115, base=0.0085), rings=4, segs=24)
-        add_part(f"eye_shine{i}", SV, SF, "eye_shine", attached_weights(SV), 0.0)
+        add_part(f"eye_shine{i}", SV, SF, "eye_shine", {eb: 1.0}, 0.0)
+        # a second, tiny sparkle low on the other side: big, bright, cute eyes
+        s2u, s2v = eu - 0.03, ev - 0.045
+        S2V, S2F, _, _ = patch(HEAD_UV, (s2u, s2v), ellipse_outline(0.011, 0.012), puffy(0.0105, base=0.0078), rings=3, segs=16)
+        add_part(f"eye_shine2_{i}", S2V, S2F, "eye_shine", {eb: 1.0}, 0.0)
 
     # Tummy
 
@@ -993,14 +1045,14 @@ def build():
     for side in (1, -1):
         ft = foot(side)
         SV, SF, sr, _ = patch(on_plush(ft.at_uv), (0, 0.0), ellipse_outline(0.86, 0.9, 2.4), puffy(0.008), rings=12, segs=64)
-        add_part(f"sole{side}", SV, SF, "fur_cream", {"body": 1.0}, 0.5 + 0.5 * sstep(1.0, 0.85, sr))
+        add_part(f"sole{side}", SV, SF, "fur_cream", {foot_bone(side): 1.0}, 0.5 + 0.5 * sstep(1.0, 0.85, sr))
         for tu in (-0.28, 0.28):
-            thread_on(on_plush(ft.at_uv), [(tu, 0.84), (tu * 0.92, 0.42)], 0.0135, f"toe{side}{tu}", lambda V: {"body": 1.0}, r=0.0034)
+            thread_on(on_plush(ft.at_uv), [(tu, 0.84), (tu * 0.92, 0.42)], 0.0135, f"toe{side}{tu}", lambda V, side=side: {foot_bone(side): 1.0}, r=0.0034)
 
     # Tail pom-pom
     tail = Radial((0, 0.2, -0.325), ellipsoid((0.085, 0.08, 0.07)))
     V, F, _ = tail.mesh(12)
-    add_part("tail", V, F, "fur_tail", {"body": 1.0})
+    add_part("tail", V, F, "fur_tail", {"tail": 1.0})
 
     # Paw stitches (the arms themselves are part of the plush body)
     for side, bone in ((1, "arm_L"), (-1, "arm_R")):
@@ -1008,32 +1060,27 @@ def build():
         # into creases (the fur mask shortens the pile along them).
         for j, (pts, nrm) in enumerate(paw_stitch_lines(side)):
             V, F = tube(pts + nrm * 0.0035, np.full(len(pts), 0.0022), segs=8)
-            add_part(f"paw_stitch{side}{j}", V, F, "thread_tan", {bone: 1.0}, 0.0)
+            add_part(f"paw_stitch{side}{j}", V, F, "thread_tan", {bone.replace("arm", "paw"): 1.0}, 0.0)
 
     # Ears + linings + piping
     ear_info = {}
     for side, tag in ((1, "L"), (-1, "R")):
         V, F, tp, inner, frame = ear_mesh(side)
-        w2 = sstep(0.3, 0.62, tp)
-        wh = 1 - sstep(0.0, 0.1, tp)
-        w1 = (1 - w2) * (1 - wh)
         efl = np.where(inner & (tp > 0.06), 0.0, 1.0)
-        add_part(f"ear{tag}", V, F, "fur_tan", {f"ear_{tag}_1": w1, f"ear_{tag}_2": w2, "head": wh}, efl, recalc=True)
+        add_part(f"ear{tag}", V, F, "fur_tan", ear_w(tp, tag), efl, recalc=True)
         LV, LF, lt, pipe, pipe_t = ear_lining(side, frame)
-        w2 = sstep(0.3, 0.62, lt)
-        wh = 1 - sstep(0.0, 0.1, lt)
-        add_part(f"lining{tag}", LV, LF, "fur_beige", {f"ear_{tag}_1": (1 - w2) * (1 - wh), f"ear_{tag}_2": w2, "head": wh}, 0.8)
+        add_part(f"lining{tag}", LV, LF, "fur_beige", ear_w(lt, tag), 0.8)
         PV, PF = tube(pipe, np.full(len(pipe), 0.0085), segs=10, cap_start=True, cap_end=True)
         pt = np.r_[np.repeat(pipe_t, 10), pipe_t[0], pipe_t[-1]]
-        w2 = sstep(0.3, 0.62, pt)
-        wh = 1 - sstep(0.0, 0.1, pt)
-        add_part(f"piping{tag}", PV, PF, "fur_piping", {f"ear_{tag}_1": (1 - w2) * (1 - wh), f"ear_{tag}_2": w2, "head": wh}, 0.6)
+        add_part(f"piping{tag}", PV, PF, "fur_piping", ear_w(pt, tag), 0.6)
         C, ts = frame[0], frame[1]
-        ear_info[tag] = (C[0], C[np.searchsorted(ts, 0.45)])
+        ear_info[tag] = (C[0], C[np.searchsorted(ts, 0.45)], C[np.searchsorted(ts, 0.74)])
     BONES["ear_L_1"] = (tuple(ear_info["L"][0]), "head")
     BONES["ear_L_2"] = (tuple(ear_info["L"][1]), "ear_L_1")
     BONES["ear_R_1"] = (tuple(ear_info["R"][0]), "head")
     BONES["ear_R_2"] = (tuple(ear_info["R"][1]), "ear_R_1")
+    BONES["ear_L_3"] = (tuple(ear_info["L"][2]), "ear_L_2")
+    BONES["ear_R_3"] = (tuple(ear_info["R"][2]), "ear_R_2")
 
 
 # ----------------------------------------------------------------------------
@@ -1086,27 +1133,30 @@ def collision_data(report=True):
         d = np.minimum(sdf_radial(head, P), body_parts_sdf(P))
         return d if exclude_arms else np.minimum(d, arms_sdf(P))
 
-    for side, bone in ((1, "arm_L"), (-1, "arm_R")):
+    for side, tag in ((1, "L"), (-1, "R")):
         C, ts = arm_curve(side)
         r = arm_radii(ts)
-        piv = np.array(BONES[bone][0])
-        out = []
+        out = {"arm": [], "paw": []}
         for t in (0.3, 0.42, 0.55, 0.68, 0.8, 0.9, 0.97):
             i = int(np.searchsorted(ts, t))
             P = C[i]
             free = float(clearance(P[None], exclude_arms=True)[0])
             rad = min(r[i] + fur, free - 0.002)
             if report:
-                print(f"[collide] {bone} t={t:.2f} clearance={free - r[i]:+.3f}")
+                print(f"[collide] arm_{tag} t={t:.2f} clearance={free - r[i]:+.3f}")
             if rad > 0.02:
-                out.append([*np.round(P - piv, 4).tolist(), round(rad, 4)])
-        data["samples"][bone] = out
+                bone = "paw" if t >= PAW_T + 0.03 else "arm"
+                piv = np.array(BONES[f"{bone}_{tag}"][0])
+                out[bone].append([*np.round(P - piv, 4).tolist(), round(rad, 4)])
+        data["samples"][f"arm_{tag}"] = out["arm"]
+        data["samples"][f"paw_{tag}"] = out["paw"]
     for side, tag in ((1, "L"), (-1, "R")):
         C, ts, T, W, N = ear_frame(side)
         width, thick = ear_profile(ts)
         p1 = np.array(BONES[f"ear_{tag}_1"][0])
         p2 = np.array(BONES[f"ear_{tag}_2"][0])
-        s1, s2 = [], []
+        p3 = np.array(BONES[f"ear_{tag}_3"][0])
+        s1, s2, s3 = [], [], []
         worst = 9.0
         for t in (0.22, 0.32, 0.42, 0.55, 0.66, 0.77, 0.87, 0.95):
             i = int(np.searchsorted(ts, t))
@@ -1119,12 +1169,15 @@ def collision_data(report=True):
                     continue
                 if t < 0.45:
                     s1.append([*np.round(P - p1, 4).tolist(), round(rad, 4)])
-                else:
+                elif t < 0.72:
                     s2.append([*np.round(P - p2, 4).tolist(), round(rad, 4)])
+                else:
+                    s3.append([*np.round(P - p3, 4).tolist(), round(rad, 4)])
         if report:
             print(f"[collide] ear_{tag} worst rest clearance={worst:+.3f} samples={len(s1)}+{len(s2)}")
         data["samples"][f"ear_{tag}_1"] = s1
         data["samples"][f"ear_{tag}_2"] = s2
+        data["samples"][f"ear_{tag}_3"] = s3
     return data
 
 
@@ -1204,7 +1257,11 @@ def build_armature(objs):
     for o in bpy.context.scene.objects:
         o.select_set(o is rig)
     bpy.ops.object.mode_set(mode="EDIT")
-    order = ["root", "body", "head", "jaw", "ear_L_1", "ear_L_2", "ear_R_1", "ear_R_2", "arm_L", "arm_R"]
+    order = [
+        "root", "body", "chest", "head", "jaw", "nose", "eye_L", "eye_R",
+        "ear_L_1", "ear_L_2", "ear_L_3", "ear_R_1", "ear_R_2", "ear_R_3",
+        "arm_L", "paw_L", "arm_R", "paw_R", "foot_L", "foot_R", "tail",
+    ]
     for name in order:
         pos, parent = BONES[name]
         p = to_bl(np.array(pos))
