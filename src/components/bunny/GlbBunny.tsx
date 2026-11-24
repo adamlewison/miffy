@@ -3,10 +3,11 @@
 import * as THREE from "three";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useGLTF } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { BONE_NAMES, useBunnyAnimator, type Rig } from "./rig";
 import { applyFur, defaultShellCount } from "./fur";
+import { getQuality } from "./quality";
 import { BunnySolid, type CollisionJSON } from "./collide";
 
 export const BUNNY_GLB = "/bunny.glb";
@@ -17,7 +18,9 @@ const TARGET_HEIGHT = 1.42;
  * into /public and it's used automatically. Bones are matched by name — see
  * BONE_NAMES in rig.ts. If the right ear splays the wrong way, flip earZSign.
  */
-export function GlbBunny({ url = BUNNY_GLB }: { url?: string }) {
+export function GlbBunny({ url: urlProp }: { url?: string }) {
+  // Phones load the lower-poly body (same shape and skeleton, so the same collision data).
+  const [url] = useState(() => urlProp ?? getQuality().glb);
   const gltf = useGLTF(url);
 
   const { scene, rig, scale, offset } = useMemo(() => {
@@ -56,7 +59,7 @@ export function GlbBunny({ url = BUNNY_GLB }: { url?: string }) {
   const solid = useRef<BunnySolid | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch(url.replace(/\.glb$/, ".collision.json"))
+    fetch(BUNNY_GLB.replace(/\.glb$/, ".collision.json"))
       .then((r) => (r.ok ? r.json() : null))
       .then((j: CollisionJSON | null) => {
         if (alive && j) {
@@ -72,22 +75,29 @@ export function GlbBunny({ url = BUNNY_GLB }: { url?: string }) {
   }, [url]);
 
   // Plush fur (shell rendering) on every fabric part.
-  // Adaptive quality: if the frame rate sags (a slow phone), quietly drop fur layers
-  // until it's smooth again. An explicit ?shells=N in the URL turns this off.
+  // Adaptive quality: if the frame rate sags (a slow phone), quietly drop fur layers,
+  // then resolution, until it's smooth again. An explicit ?shells=N turns this off.
   const [shells, setShells] = useState(defaultShellCount);
-  const perf = useRef({ acc: 0, n: 0, since: 0 });
+  const { setDpr, viewport } = useThree();
+  const perf = useRef({ acc: 0, n: 0, since: 0, pinned: false, frames: 0 });
+  useEffect(() => {
+    perf.current.pinned = new URLSearchParams(window.location.search).has("shells");
+  }, []);
   useFrame((_, dt) => {
-    if (new URLSearchParams(window.location.search).has("shells")) return;
     const p = perf.current;
-    if (dt > 0.25) return; // tab was hidden / first frames compiling shaders
+    p.frames++;
+    (window as unknown as { __oneyFrames: number }).__oneyFrames = p.frames;
+    if (p.pinned || dt > 0.25) return; // tab was hidden / first frames compiling shaders
     p.acc += dt;
     p.n++;
     p.since += dt;
     if (p.since < 3) return;
     const fps = p.n / p.acc;
     p.acc = p.n = p.since = 0;
-    const target = window.matchMedia("(pointer: coarse)").matches ? 24 : 40;
-    if (fps < target) setShells((s) => (s > 4 ? Math.max(4, Math.round(s * 0.7)) : s));
+    const q = getQuality();
+    if (fps >= q.fps * 0.8) return;
+    if (shells > q.minShells) setShells((s) => Math.max(q.minShells, Math.round(s * 0.7)));
+    else if (viewport.dpr > 1.01) setDpr(Math.max(1, viewport.dpr - 0.25));
   });
   useEffect(() => applyFur(scene, shells), [scene, shells]);
 

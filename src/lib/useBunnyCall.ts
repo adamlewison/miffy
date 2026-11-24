@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { OpenAIRealtimeWebRTC, RealtimeAgent, RealtimeSession, tool, type RealtimeItem } from "@openai/agents/realtime";
 import { z } from "zod";
 import { bunnyState, setMode, triggerGesture, triggerTrick, type Gesture, type Trick } from "./bunnyState";
+import { getQuality } from "@/components/bunny/quality";
 import { reactLocally, VIDEO_NOTES, VisionWatcher, type VisionEvent } from "./vision";
 import { getAudioContext, playHangup, playPickup, startRingback, unlockAudio } from "./sounds";
 
@@ -189,7 +190,7 @@ export function useBunnyCall() {
     if (camRef.current) return;
     try {
       const cam = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { facingMode: "user", width: { ideal: getQuality().cameraWidth }, height: { ideal: Math.round((getQuality().cameraWidth * 3) / 4) } },
         audio: false,
       });
       camRef.current = cam;

@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
+import { getQuality } from "@/components/bunny/quality";
 import { reactLocally, VisionWatcher, type VisionEvent } from "@/lib/vision";
 import { bunny } from "@/bunny.config";
 import { bunnyState, setMode, triggerGesture, triggerTrick, type Gesture, type Mode, type Trick } from "@/lib/bunnyState";
@@ -45,7 +46,7 @@ export default function Preview() {
       console.log("[vision event]", e);
       setSeen((xs) => [...xs.slice(-5), e]);
     };
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } } }).then(async (s) => {
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: getQuality().cameraWidth }, height: { ideal: Math.round((getQuality().cameraWidth * 3) / 4) } } }).then(async (s) => {
       if (!alive) return s.getTracks().forEach((t) => t.stop());
       stream = s;
       const v = videoRef.current!;

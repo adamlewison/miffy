@@ -11,6 +11,7 @@
  * `VisionWatcher` feeds it from the camera.
  */
 import { bunnyState, triggerGesture, triggerTrick } from "./bunnyState";
+import { getQuality } from "@/components/bunny/quality";
 
 export type VisionEvent = "face_seen" | "smile" | "wave" | "sad" | "thumbs_up" | "love";
 
@@ -207,8 +208,8 @@ export class VisionWatcher {
 
   private loop = () => {
     if (this.stopped) return;
-    // ~8 analyses a second, alternating face and hands: light enough to run beside the fur.
-    this.timer = setTimeout(this.loop, 125);
+    // A few analyses a second (fewer on phones), alternating face and hands, so it runs beside the fur.
+    this.timer = setTimeout(this.loop, getQuality().visionIntervalMs);
     const v = this.source;
     if (v.readyState < 2 || v.videoWidth === 0 || document.hidden) return;
     const now = performance.now();

@@ -41,7 +41,7 @@ Arms and ears never pass through her head, body, legs or each other. This is enf
 ## 2. How it works (the simple version)
 
 1. **Her body is code.** `blender/build_oney.py` runs Blender headless (as a Python library) and builds her from maths: each part is a smooth 3D shape sized from the photos, the parts are blended into one stuffed surface, and patches and stitches are laid on top. It also bakes soft shadows, adds a 21-bone skeleton, and exports `public/bunny.glb` plus `public/bunny.collision.json`.
-2. **Her fur is drawn live** (per-strand warm/cool colour, soft tufts of clumped length, sun-bleached tips and a warm scattered-light glow in shadow). `fur.ts` redraws each fabric part 10 times on phones and 20 on desktop, each layer pushed slightly further out and cut into strands, so she looks fluffy. The GLB itself is smooth.
+2. **Her fur is drawn live** (per-strand warm/cool colour, soft tufts of clumped length, sun-bleached tips and a warm scattered-light glow in shadow). `fur.ts` redraws each fabric part 4 times on phones and 20 on desktop, each layer pushed slightly further out and cut into strands, so she looks fluffy. The GLB itself is smooth.
 3. **Her movement is code.** `rig.ts` turns her bones every frame: breathing, springy ears, a head bob from her voice volume, and gesture poses. `collide.ts` then nudges any arm or ear out of her body.
 4. **She sees Mommy.** On a call the front camera comes on (like FaceTime). MediaPipe runs face and hand tracking **on the phone** (`src/lib/vision.ts`), turning smiles, frowns, waves, thumbs-ups and the I-love-you sign into events. Each event makes her body react at once and sends the voice model a short `[video]` note plus a small frame. Video is never streamed anywhere.
 5. **Her voice is OpenAI Realtime.** Audio goes straight from the phone to OpenAI over WebRTC. Our server only mints a 10-minute key and builds her instructions (character sheet plus memories). Her reply audio is pitch-shifted on the phone and drives the talking animation.
@@ -78,7 +78,7 @@ Environment variables (see `.env.example`):
 ```bash
 python3.13 -m venv .bvenv
 .bvenv/bin/pip install -r blender/requirements.txt     # bpy, scikit-image, numpy (~400 MB)
-npm run model            # = .bvenv/bin/python blender/build_oney.py --out public/bunny.glb   (~3-4 min)
+npm run model            # builds public/bunny.glb, then the phone model public/bunny-lite.glb (--tris 18000 --no-collision)   (~7 min)
 npm run model:renders    # same, plus Cycles preview renders in .oney-out/renders/
 ```
 - There's no GPU in cloud sandboxes, so **EEVEE crashes** (no EGL). The script uses **Cycles on CPU** for the AO bake and previews.
@@ -216,6 +216,7 @@ Turso/libSQL. The table is auto-created (`db/schema.sql` is for reference). The 
 | `rig.ts` | all procedural animation: states, spring ears, voice-driven bob/squish/jaw, tricks, held gestures |
 | `collide.ts` | per-frame solid-body solve (head and body SDF grids, arm and ear spheres) |
 | `fur.ts` | shell-texture fur (`FUR_PROFILES` per material, `?shells=N`) |
+| `quality.ts` | phone (`lite`) vs desktop (`high`) settings: model file, fur layers, pixel ratio, fps, shadows, camera tracking |
 | `ProceduralBunny.tsx`, `materials.ts` | fallback bunny if the GLB fails to load |
 
 **Animation states:**
@@ -296,7 +297,7 @@ None of the helper pages are linked from the call UI.
 ## 7. Open items
 - Camera reactions have only been tested with a fake webcam (synthetic photos), not on a real phone. Watch for: detection speed alongside the fur, false "sad" on a tired or neutral face (raise the 0.42 in `ReactionLogic` if so), and whether she speaks up too often (cooldowns in `vision.ts` / `onVision`).
 - `src/bunny.config.ts` still has `TODO` memories and inside jokes. Adam should fill these in; they matter most.
-- No live call has been made on a real phone yet, so phone performance with fur is untested. `GlbBunny.tsx` now drops fur layers automatically (×0.7 every 3 s while below 24 fps on phones / 40 on desktop, floor 4); `?shells=N` pins the count and disables this. If it still looks laggy, lower `defaultShellCount` in `fur.ts`.
+- **Phone speed:** `src/components/bunny/quality.ts` holds every speed/looks trade-off. Phones (touch) get the `lite` tier: `bunny-lite.glb` (35k triangles vs 77k; built with `--tris 18000`, which also sets `DETAIL` 0.6 for patches, threads and ears), 4 fur layers with a one-lattice shader (`FUR_LITE`), pixel ratio ≤1.3, 30 fps, no contact shadow, camera tracking every 380 ms on a 480-wide image, and no animated bokeh behind the call. If frames still sag below 80% of the cap, `GlbBunny.tsx` drops fur layers (down to 2), then pixel ratio (down to 1). Under the same software renderer the lite tier draws ~5× more frames than the old phone settings. `?quality=lite|high` forces a tier; `?shells=N` pins the fur and turns adaptation off. Still untested on a real phone.
 - `OPENAI_API_KEY` is set on Vercel (calls work). **Turso is not**: the live site reports `"backend":"memory"` at `/api/memories`, so memories vanish on every cold start. Add `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in Vercel.
 - The mouth and toe stitches still use the darker `thread` colour (the paw stitches are tan).
 - When she waves, the raised arm pushes her left ear quite far out sideways (the collision solve doing its job). A softer wave target or letting the ear swing back as well as out would look nicer.

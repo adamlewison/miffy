@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "tsc --noEmit",
     "icons": "node scripts/make-icons.mjs",
-    "model": ".bvenv/bin/python blender/build_oney.py --out public/bunny.glb",
+    "model": ".bvenv/bin/python blender/build_oney.py --out public/bunny.glb && .bvenv/bin/python blender/build_oney.py --out public/bunny-lite.glb --tris 18000 --no-collision",
     "model:renders": ".bvenv/bin/python blender/build_oney.py --out public/bunny.glb --renders .oney-out/renders",
     "check:types": "tsc --noEmit",
     "check:solid": "node tools/solid.cjs",

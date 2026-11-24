@@ -228,6 +228,10 @@ def ellipse_outline(ru, rv, power=2.0):
     return fn
 
 
+# Mesh resolution of the small parts (patches, threads, ears). The phone model uses less.
+DETAIL = 1.0
+
+
 def patch(surface_uv, center, outline, height_fn, rings=14, segs=72):
     """
     A puffy appliqué patch that hugs a parametric surface. surface_uv(u,v) -> P.
@@ -235,6 +239,8 @@ def patch(surface_uv, center, outline, height_fn, rings=14, segs=72):
     height_fn(rho, u, v) -> offset along the surface normal.
     Returns verts, faces, rho (0 centre .. 1 edge), (u, v).
     """
+    segs = max(16, int(round(segs * DETAIL)))
+    rings = max(3, int(round(rings * max(DETAIL, 0.7))))
     cu, cv = center
     us, vs, rhos = [cu], [cv], [0.0]
     th = np.linspace(0, 2 * np.pi, segs, endpoint=False)
@@ -277,6 +283,7 @@ def puffy(t, base=-0.0015, edge_soft=5.0):
 def tube(centers, radii, segs=14, cap_start=True, cap_end=True, ref=(0, 0, 1), section=None):
     """Tube along a polyline with rotation-minimising frames. radii: per-ring scalar.
     section(phi, i) -> (a, b) multipliers for non-circular sections."""
+    segs = max(6, int(round(segs * DETAIL)))
     C = np.asarray(centers, float)
     n = len(C)
     T = norm(np.gradient(C, axis=0))
@@ -545,7 +552,7 @@ def ear_frame(side):
         ]
     )
     ctrl[:, 0] *= side
-    n = 64
+    n = max(40, int(round(64 * DETAIL)))
     C, ts, _ = catmull_rom(ctrl, n)
     T = norm(np.gradient(C, axis=0))
     # The ear lies over the crown (outer face up), turns to face straight out where it
@@ -581,6 +588,7 @@ def ear_profile(ts):
 
 
 def ear_mesh(side, segs=28):
+    segs = max(18, int(round(segs * DETAIL)) // 2 * 2)
     C, ts, T, W, N = ear_frame(side)
     width, thick = ear_profile(ts)
     phi = np.linspace(0, 2 * np.pi, segs, endpoint=False)
@@ -976,11 +984,14 @@ def ear_w(tp, tag):
     return {f"ear_{tag}_1": (1 - wa) * (1 - wh), f"ear_{tag}_2": wa - w3 * wa, f"ear_{tag}_3": w3 * wa, "head": wh}
 
 
+TARGET_TRIS = 44000  # main plush body; the phone model (--tris) uses fewer
+
+
 def build():
     # One continuous stuffed body: head, body, arms, legs blended like sewn fabric.
     PV, PF = build_plush_body()
     obj = add_part("plush", PV, PF, "fur_tan", {}, None, recalc=True)
-    decimate_and_smooth(obj, target_tris=44000)
+    decimate_and_smooth(obj, target_tris=TARGET_TRIS)
     V = from_bl_obj(obj)
     w, fl, albedo = finish_plush_body(V)
     set_weights(obj, w)
@@ -1082,7 +1093,7 @@ def build():
         LV, LF, lt, pipe, pipe_t = ear_lining(side, frame)
         add_part(f"lining{tag}", LV, LF, "fur_beige", ear_w(lt, tag), 0.8)
         PV, PF = tube(pipe, np.full(len(pipe), 0.0085), segs=10, cap_start=True, cap_end=True)
-        pt = np.r_[np.repeat(pipe_t, 10), pipe_t[0], pipe_t[-1]]
+        pt = np.r_[np.repeat(pipe_t, (len(PV) - 2) // len(pipe)), pipe_t[0], pipe_t[-1]]
         add_part(f"piping{tag}", PV, PF, "fur_piping", ear_w(pt, tag), 0.6)
         C, ts = frame[0], frame[1]
         ear_info[tag] = (C[0], C[np.searchsorted(ts, 0.45)], C[np.searchsorted(ts, 0.74)])
@@ -1373,7 +1384,12 @@ def main():
     ap.add_argument("--out", default="public/bunny.glb")
     ap.add_argument("--renders", default=None)
     ap.add_argument("--no-bake", action="store_true")
+    ap.add_argument("--tris", type=int, default=44000, help="triangles for the plush body (phones: ~18000)")
+    ap.add_argument("--no-collision", action="store_true", help="skip bunny.collision.json (the lite model shares the main one)")
     args = ap.parse_args([a for a in sys.argv[1:] if a != "--"])
+    global TARGET_TRIS, DETAIL
+    TARGET_TRIS = args.tris
+    DETAIL = 1.0 if args.tris >= 30000 else 0.6
 
     reset_scene()
     make_materials()
@@ -1396,10 +1412,11 @@ def main():
     export(args.out)
     import json
 
-    col_path = os.path.splitext(args.out)[0] + ".collision.json"
-    with open(col_path, "w") as fh:
-        json.dump(collision_data(), fh, separators=(",", ":"))
-    print(f"[oney] wrote {col_path} ({os.path.getsize(col_path) / 1e3:.0f} kB)")
+    if not args.no_collision:
+        col_path = os.path.splitext(args.out)[0] + ".collision.json"
+        with open(col_path, "w") as fh:
+            json.dump(collision_data(), fh, separators=(",", ":"))
+        print(f"[oney] wrote {col_path} ({os.path.getsize(col_path) / 1e3:.0f} kB)")
     print(f"[oney] wrote {args.out} ({os.path.getsize(args.out) / 1e6:.2f} MB)")
     if args.renders:
         render_previews(args.renders, objs)

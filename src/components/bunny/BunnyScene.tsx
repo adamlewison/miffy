@@ -7,6 +7,7 @@ import { ContactShadows, Environment, Lightformer } from "@react-three/drei";
 import { ProceduralBunny } from "./ProceduralBunny";
 import { BUNNY_GLB, GlbBunny } from "./GlbBunny";
 import { FUR_LAYER } from "./fur";
+import { getQuality } from "./quality";
 
 /**
  * Camera framing. The call uses a FaceTime-style shot: her head, shoulders and
@@ -56,8 +57,12 @@ function Framing({ shot }: { shot: Shot }) {
   }, [camera, shot]);
   // A phone propped on the bed is never perfectly still: a slow, tiny drift.
   const look = useRef(new THREE.Vector3());
+  const still = useRef(true);
+  useEffect(() => {
+    still.current = new URLSearchParams(window.location.search).has("view");
+  }, []);
   useFrame(({ clock }) => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("view")) return;
+    if (still.current) return;
     const t = clock.elapsedTime;
     camera.position.set(
       shot.pos.x + 0.008 * Math.sin(t * 0.31) + 0.003 * Math.sin(t * 1.13),
@@ -158,15 +163,13 @@ function Scene() {
 
 export default function BunnyScene() {
   const hasGlb = useHasGlb();
-  const [fps, setFps] = useState(60);
-  useEffect(() => {
-    if (window.matchMedia("(pointer: coarse)").matches) setFps(30);
-  }, []);
+  const [q] = useState(getQuality);
+  const fps = q.fps;
 
   return (
     <Canvas
       frameloop="demand"
-      dpr={[1, fps < 60 ? 1.75 : 2]}
+      dpr={[1, q.dpr]}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
       camera={{ fov: 32, near: 0.1, far: 50, position: [0, 1, 4.5] }}
       style={{ position: "absolute", inset: 0 }}
@@ -195,7 +198,7 @@ export default function BunnyScene() {
         ) : null}
       </Suspense>
 
-      <ContactShadows position={[0, 0.001, 0]} opacity={0.35} scale={3} blur={2.6} far={1.2} resolution={256} color="#6b4a32" frames={Infinity} />
+      {q.contactShadows && <ContactShadows position={[0, 0.001, 0]} opacity={0.35} scale={3} blur={2.6} far={1.2} resolution={256} color="#6b4a32" frames={Infinity} />}
     </Canvas>
   );
 }

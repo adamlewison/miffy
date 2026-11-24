@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { getQuality } from "./quality";
 
 /**
  * Shell-texture fur for Oney's plush.
@@ -76,7 +77,7 @@ type Uniforms = {
   uRimColor: { value: THREE.Color };
 };
 
-function furMaterial(source: THREE.MeshStandardMaterial, p: FurProfile, h: number, vertexColors = true) {
+function furMaterial(source: THREE.MeshStandardMaterial, p: FurProfile, h: number, vertexColors = true, lite = false) {
   const m = new THREE.MeshStandardMaterial({
     color: source.color.clone(),
     roughness: 0.92,
@@ -85,6 +86,7 @@ function furMaterial(source: THREE.MeshStandardMaterial, p: FurProfile, h: numbe
     envMapIntensity: 0.85,
   });
   m.name = `${source.name}_fur${h.toFixed(2)}`;
+  if (lite) m.defines = { ...(m.defines ?? {}), FUR_LITE: "" };
   if (h > 0) {
     m.alphaToCoverage = true;
     m.transparent = false;
@@ -164,11 +166,18 @@ function furMaterial(source: THREE.MeshStandardMaterial, p: FurProfile, h: numbe
           // up with the surface (avoids moiré "fingerprint" rings).
           vec3 P = mat3(0.80, 0.36, -0.48, -0.47, 0.86, -0.18, 0.37, 0.36, 0.86) * vFurP * uDensity;
           P += 0.7 * vec3(sin(P.y * 0.131 + P.z * 0.071), sin(P.z * 0.113 + P.x * 0.057), sin(P.x * 0.097 + P.y * 0.121));
-          float id1; float id2;
+          float id1;
           float d1 = furStrand(P, uFurH, id1);
-          float d2 = furStrand(P + vec3(0.5, 0.31, 0.77), uFurH, id2);
-          float d = min(d1, d2);
-          float id = d1 < d2 ? id1 : id2;
+          #ifdef FUR_LITE
+            // Phones: one strand lattice, slightly thicker strands to keep the same coverage.
+            float d = d1 * 0.82;
+            float id = id1;
+          #else
+            float id2;
+            float d2 = furStrand(P + vec3(0.5, 0.31, 0.77), uFurH, id2);
+            float d = min(d1, d2);
+            float id = d1 < d2 ? id1 : id2;
+          #endif
           // variable strand length, tapering radius
           // Soft tufts: neighbouring strands clump to similar lengths, like real terry pile.
           float tuft = furSoft(vFurP * 38.0);
@@ -203,7 +212,7 @@ function furMaterial(source: THREE.MeshStandardMaterial, p: FurProfile, h: numbe
         }`,
       );
   };
-  m.customProgramCacheKey = () => `oney-fur-${h > 0 ? "shell" : "base"}`;
+  m.customProgramCacheKey = () => `oney-fur-${h > 0 ? "shell" : "base"}${lite ? "-lite" : ""}`;
   return m;
 }
 
@@ -218,8 +227,7 @@ export function defaultShellCount() {
   if (typeof window === "undefined") return 16;
   const q = new URLSearchParams(window.location.search).get("shells");
   if (q !== null && !Number.isNaN(Number(q))) return Math.max(0, Math.min(40, Number(q)));
-  const mobile = window.matchMedia("(pointer: coarse)").matches;
-  return mobile ? 10 : 20;
+  return getQuality().shells;
 }
 
 /**
@@ -259,7 +267,8 @@ export function applyFur(root: THREE.Object3D, shells = defaultShellCount()) {
 
     ensureFurAttr(mesh.geometry);
     const hasColor = !!mesh.geometry.getAttribute("color");
-    const baseMat = furMaterial(src, profile, 0, hasColor);
+    const lite = getQuality().furLite;
+    const baseMat = furMaterial(src, profile, 0, hasColor, lite);
     mesh.material = baseMat;
     created.push(baseMat);
 
@@ -268,7 +277,7 @@ export function applyFur(root: THREE.Object3D, shells = defaultShellCount()) {
     const skinned = mesh as THREE.SkinnedMesh;
     for (let i = 1; i <= n; i++) {
       const h = i / n;
-      const mat = furMaterial(src, profile, h, hasColor);
+      const mat = furMaterial(src, profile, h, hasColor, lite);
       let shell: THREE.Mesh;
       if (skinned.isSkinnedMesh) {
         const s = new THREE.SkinnedMesh(mesh.geometry, mat);
