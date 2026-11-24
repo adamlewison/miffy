@@ -4,10 +4,19 @@ import { useRef, useState } from "react";
 import { gateway } from "@ai-sdk/gateway";
 import { bunny } from "@/bunny.config";
 
-const MODELS = ["google/gemini-3.8-live", "google/gemini-3.8-live-extended-thinking"];
-const VOICES = ["Aoede", "Leda", "Zephyr", "Puck", "Kore", "Achernar"];
+const GEMINI_VOICES = ["Achernar", "Aoede", "Leda", "Zephyr", "Puck", "Kore"];
+const OPENAI_VOICES = ["coral", "marin", "cedar", "shimmer", "sage", "ballad", "verse", "alloy", "ash", "echo"];
+const GROK_VOICES = ["ara", "eve"];
+const MODELS: { id: string; voices: string[] }[] = [
+  { id: "google/gemini-3.8-live-extended-thinking", voices: GEMINI_VOICES },
+  { id: "google/gemini-3.8-live", voices: GEMINI_VOICES },
+  { id: "openai/gpt-live-1.1", voices: OPENAI_VOICES },
+  { id: "openai/gpt-live-1", voices: OPENAI_VOICES },
+  { id: "openai/gpt-realtime-2.1", voices: OPENAI_VOICES },
+  { id: "openai/gpt-realtime-mini", voices: OPENAI_VOICES },
+  { id: "spacexai/grok-voice-3.0", voices: GROK_VOICES },
+];
 const OUT_RATE = 24000;
-const IN_RATE = 16000;
 
 type Ev = { type: string; [k: string]: unknown };
 
@@ -17,9 +26,14 @@ type Ev = { type: string; [k: string]: unknown };
  * log is shown so protocol problems are easy to spot.
  */
 export default function LiveTest() {
-  const [model, setModel] = useState(MODELS[0]);
-  const [voice, setVoice] = useState("Aoede");
-  const [pitch, setPitch] = useState(6);
+  const [model, setModel] = useState(MODELS[0].id);
+  const voices = MODELS.find((m) => m.id === model)?.voices ?? GEMINI_VOICES;
+  const pickModel = (id: string) => {
+    setModel(id);
+    setVoice(MODELS.find((m) => m.id === id)!.voices[0]);
+  };
+  const [voice, setVoice] = useState("Achernar");
+  const [pitch, setPitch] = useState(8);
   const [status, setStatus] = useState("idle");
   const [transcript, setTranscript] = useState("");
   const [log, setLog] = useState<string[]>([]);
@@ -132,7 +146,7 @@ export default function LiveTest() {
       ws.onclose = (e) => { note(`closed ${e.code} ${e.reason}`); setStatus("ended"); stopMic(); };
 
       // Mic -> 16 kHz PCM16 -> gateway.
-      const mctx = new AudioContext({ sampleRate: IN_RATE });
+      const mctx = new AudioContext({ sampleRate: info.inputRate ?? 16000 });
       micCtx.current = mctx;
       const msrc = mctx.createMediaStreamSource(stream);
       const proc = mctx.createScriptProcessor(2048, 1, 1);
@@ -179,18 +193,18 @@ export default function LiveTest() {
     <main className="admin">
       <h1>Live test: Gemini Live</h1>
       <p>
-        Talk to {bunny.name} through the Vercel AI Gateway. Use headphones to avoid echo. Status: <b>{status}</b>
+        Talk to {bunny.name} through the Vercel AI Gateway. Try other models and voices, then raise the pitch. Use headphones to avoid echo. Status: <b>{status}</b>
       </p>
       <label className="row">
         <span>Model</span>
-        <select value={model} onChange={(e) => setModel(e.target.value)} disabled={live}>
-          {MODELS.map((m) => <option key={m}>{m}</option>)}
+        <select value={model} onChange={(e) => pickModel(e.target.value)} disabled={live}>
+          {MODELS.map((m) => <option key={m.id}>{m.id}</option>)}
         </select>
       </label>
       <label className="row">
         <span>Voice</span>
         <select value={voice} onChange={(e) => setVoice(e.target.value)} disabled={live}>
-          {VOICES.map((v) => <option key={v}>{v}</option>)}
+          {voices.map((v) => <option key={v}>{v}</option>)}
         </select>
       </label>
       <label className="row">

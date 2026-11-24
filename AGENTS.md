@@ -257,7 +257,7 @@ A two-tap delay-line shifter: +4 semitones raises both pitch and formants (child
 | `/` | the call |
 | `/preview` | test bench (`?view=`, `?hold=1`, `?debug=1`, `?shells=`) |
 | `/voices` | voice and pitch audition |
-| `/live-test` | experimental: talk to Gemini Live (Aoede voice) through the Vercel AI Gateway, with the pitch shifter. Needs a real `AI_GATEWAY_API_KEY`. The sandbox proxy blocks WebSockets, so it can only be tried from a real browser |
+| `/live-test` | experimental: talk to Gemini Live, GPT Live/Realtime or Grok voice models through the Vercel AI Gateway, with a voice picker and the pitch shifter (favourite so far: Gemini extended-thinking, Achernar, +8). Needs a real `AI_GATEWAY_API_KEY`. The sandbox proxy blocks WebSockets, so it can only be tried from a real browser |
 | `/memories` | view and edit memories |
 | `/login` | passcode |
 

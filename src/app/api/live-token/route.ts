@@ -23,10 +23,12 @@ export async function POST(req: NextRequest) {
     memories = await listMemories(30);
   } catch {}
   const instructions = buildInstructions(memories);
+  // Gemini wants 16 kHz mic audio; the OpenAI and xAI realtime models want 24 kHz.
+  const inputRate = model.startsWith("google/") ? 16000 : 24000;
   const sessionConfig = {
     instructions,
     voice,
-    inputAudioFormat: { type: "audio/pcm", rate: 16000 },
+    inputAudioFormat: { type: "audio/pcm", rate: inputRate },
     outputAudioFormat: { type: "audio/pcm", rate: 24000 },
     inputAudioTranscription: {},
     outputAudioTranscription: {},
@@ -38,7 +40,7 @@ export async function POST(req: NextRequest) {
       expiresAfterSeconds: 300,
       sessionConfig,
     });
-    return NextResponse.json({ token, url, expiresAt, model, sessionConfig });
+    return NextResponse.json({ token, url, expiresAt, model, sessionConfig, inputRate });
   } catch (err) {
     console.error("[live-token]", err);
     return NextResponse.json({ error: String((err as Error)?.message ?? err) }, { status: 502 });
