@@ -37,7 +37,10 @@ export async function POST() {
           audio: {
             input: {
               noise_reduction: { type: "near_field" },
-              transcription: { model: "gpt-4o-mini-transcribe" },
+              transcription: {
+                model: "gpt-4o-mini-transcribe",
+                prompt: `Names: ${bunny.name} (said "One-y"), ${bunny.alsoCalled.join(", ")}, Two-y, Booba, Mommy, Daddy.`,
+              },
               turn_detection: { type: "semantic_vad", eagerness: "high", interrupt_response: true, create_response: true },
             },
             output: { voice },

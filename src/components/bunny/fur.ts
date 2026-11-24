@@ -75,12 +75,12 @@ type Uniforms = {
   uRimColor: { value: THREE.Color };
 };
 
-function furMaterial(source: THREE.MeshStandardMaterial, p: FurProfile, h: number) {
+function furMaterial(source: THREE.MeshStandardMaterial, p: FurProfile, h: number, vertexColors = true) {
   const m = new THREE.MeshStandardMaterial({
     color: source.color.clone(),
     roughness: 0.92,
     metalness: 0,
-    vertexColors: true,
+    vertexColors,
     envMapIntensity: 0.85,
   });
   m.name = `${source.name}_fur${h.toFixed(2)}`;
@@ -246,7 +246,8 @@ export function applyFur(root: THREE.Object3D, shells = defaultShellCount()) {
     }
 
     ensureFurAttr(mesh.geometry);
-    const baseMat = furMaterial(src, profile, 0);
+    const hasColor = !!mesh.geometry.getAttribute("color");
+    const baseMat = furMaterial(src, profile, 0, hasColor);
     mesh.material = baseMat;
     created.push(baseMat);
 
@@ -255,7 +256,7 @@ export function applyFur(root: THREE.Object3D, shells = defaultShellCount()) {
     const skinned = mesh as THREE.SkinnedMesh;
     for (let i = 1; i <= n; i++) {
       const h = i / n;
-      const mat = furMaterial(src, profile, h);
+      const mat = furMaterial(src, profile, h, hasColor);
       let shell: THREE.Mesh;
       if (skinned.isSkinnedMesh) {
         const s = new THREE.SkinnedMesh(mesh.geometry, mat);

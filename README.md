@@ -87,7 +87,9 @@ python3 -m venv .bvenv && .bvenv/bin/pip install bpy     # Blender as a Python m
 .bvenv/bin/python blender/build_oney.py --out public/bunny.glb --renders /tmp/oney   # ~3 min, includes the AO bake
 ```
 
-The script models her as sewn plush panels:
+The **head, body, arms, thighs and feet are one continuous stuffed surface**, like a real plush. Each part is a distance field; they're blended with smooth unions (a soft fillet at the neck, arms blending in only at the shoulder so they rest on the tummy without melting into it), meshed with marching cubes (`pip install scikit-image` in the same venv), decimated and smoothed. Skin weights are a smooth field too, so the neck and shoulders stretch like fabric when she moves.
+
+Sewn onto that body:
 - **Head:** egg-shaped, with a centre seam, a wing-shaped cream muzzle, a big mustard triangle nose, a stitched mouth, and embroidered eyes with highlights.
 - **Ears:** long lop ears that twist and cup around the head, tan outside with a beige lining and cream piping.
 - **Body:** a squat pear-shaped body with a cream tummy and chest fold.

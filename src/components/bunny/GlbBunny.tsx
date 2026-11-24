@@ -60,6 +60,7 @@ export function GlbBunny({ url = BUNNY_GLB }: { url?: string }) {
     earXSign: -1,
     earAmount: 0.45,
     earSad: 0.2,
+    earMaxIn: 0.03,
     poses: {
       wave: [-2.22, 0.28, 1.0],
       sad: [-1.94, -0.4, 1.0],

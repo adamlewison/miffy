@@ -335,6 +335,8 @@ def make_materials():
         nt = m.node_tree
         bsdf = nt.nodes.get("Principled BSDF")
         lin = srgb_to_linear(hexc)
+        if name == "fur_tan":
+            lin = np.ones(3)  # the plush body carries its colours per vertex (tan + cream paw tips)
         bsdf.inputs["Base Color"].default_value = (*lin, 1.0)
         rough = {"eye": 0.45, "eye_shine": 0.5, "thread": 0.75}.get(name, 0.95)
         bsdf.inputs["Roughness"].default_value = rough
@@ -359,6 +361,41 @@ def make_materials():
 
 
 PARTS = []  # (obj, material)
+
+
+def from_bl_obj(obj):
+    co = np.zeros(len(obj.data.vertices) * 3)
+    obj.data.vertices.foreach_get("co", co)
+    B = co.reshape(-1, 3)
+    return np.stack([B[:, 0], B[:, 2], -B[:, 1]], -1)
+
+
+def set_weights(obj, weights):
+    nv = len(obj.data.vertices)
+    for g, w in weights.items():
+        w = np.broadcast_to(np.asarray(w, float), (nv,))
+        vg = obj.vertex_groups.get(g) or obj.vertex_groups.new(name=g)
+        for i in np.nonzero(w > 1e-4)[0]:
+            vg.add([int(i)], float(w[i]), "REPLACE")
+
+
+def decimate_and_smooth(obj, target_tris):
+    me = obj.data
+    tris = sum(len(p.vertices) - 2 for p in me.polygons)
+    mod = obj.modifiers.new("dec", "DECIMATE")
+    mod.ratio = min(1.0, target_tris / max(tris, 1))
+    mod.use_collapse_triangulate = True
+    with bpy.context.temp_override(object=obj, active_object=obj):
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    for _ in range(3):  # iron out voxel steps
+        bmesh.ops.smooth_vert(bm, verts=bm.verts, factor=0.5, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.to_mesh(me)
+    bm.free()
+    me.polygons.foreach_set("use_smooth", [True] * len(me.polygons))
+    me.update()
 
 
 def add_part(name, V, F, mat, weights, furlen=None, smooth=True, recalc=False):
@@ -386,6 +423,10 @@ def add_part(name, V, F, mat, weights, furlen=None, smooth=True, recalc=False):
     fl = np.ones(nv) if furlen is None else np.broadcast_to(np.asarray(furlen, float), (nv,))
     a = me.attributes.new("_furlen", "FLOAT", "POINT")
     a.data.foreach_set("value", np.clip(fl, 0, 2).astype(np.float32))
+    if mat == "fur_tan":  # tan parts carry their colour per vertex (material base is white)
+        alb = me.color_attributes.new("Albedo", "FLOAT_COLOR", "POINT")
+        tan = srgb_to_linear(COLORS["fur_tan"])
+        alb.data.foreach_set("color", np.tile(np.r_[tan, 1.0], nv).astype(np.float32))
     PARTS.append((obj, mat))
     return obj
 
@@ -590,7 +631,8 @@ def ear_lining(side, frame):
 
 
 def arm_curve(side):
-    ctrl = np.array([[0.17, 0.74, 0.05], [0.255, 0.645, 0.13], [0.275, 0.52, 0.195], [0.26, 0.42, 0.235], [0.245, 0.37, 0.245]])
+    # Hangs just clear of the tummy (touching only at the shoulder) so the arm can lift away cleanly.
+    ctrl = np.array([[0.17, 0.74, 0.05], [0.262, 0.645, 0.14], [0.292, 0.52, 0.218], [0.282, 0.42, 0.266], [0.268, 0.37, 0.278]])
     ctrl[:, 0] *= side
     C, ts, L = catmull_rom(ctrl, 40)
     return C, ts
@@ -628,15 +670,152 @@ def head_weights(P):
 
 
 # ----------------------------------------------------------------------------
-# Build
+# One continuous plush body (head + body + arms + legs), like a real stuffed toy
 # ----------------------------------------------------------------------------
 
 
-def build():
-    # Head
-    HV, HF, HD = head.mesh(28)
-    hu, hv, hfront = HD[:, 0], HD[:, 1], HD[:, 2] > 0.05
-    fl = np.ones(len(HV))
+def smin(a, b, k):
+    """Polynomial smooth minimum: a soft, sewn-looking fillet where parts meet."""
+    k = np.maximum(k, 1e-6)
+    h = np.clip(0.5 + 0.5 * (b - a) / k, 0.0, 1.0)
+    return b * (1 - h) + a * h - k * h * (1 - h)
+
+
+def sdf_radial(rad, P):
+    d = P - rad.c
+    r = np.linalg.norm(d, axis=-1)
+    dl = (d @ rad.R) / np.maximum(r, 1e-9)[..., None]
+    return r - rad.radius_fn(dl)
+
+
+def sdf_arm(C, radii, ts, P):
+    """Distance to a tapered tube along polyline C; also returns the param t."""
+    A, B = C[:-1], C[1:]
+    best = np.full(len(P), 1e9)
+    tbest = np.zeros(len(P))
+    for i in range(len(A)):
+        ab = B[i] - A[i]
+        u = np.clip(((P - A[i]) @ ab) / (ab @ ab), 0, 1)
+        q = A[i] + u[:, None] * ab
+        r = radii[i] * (1 - u) + radii[i + 1] * u
+        d = np.linalg.norm(P - q, axis=1) - r
+        better = d < best
+        best = np.where(better, d, best)
+        tbest = np.where(better, ts[i] * (1 - u) + ts[i + 1] * u, tbest)
+    return best, tbest
+
+
+def plush_fields(P):
+    """All part distances for points P (N,3). Far-away parts get a large value."""
+    out = {}
+    out["head"] = sdf_radial(head, P)
+    out["body"] = sdf_radial(body, P)
+    for side in (1, -1):
+        out[f"thigh{side}"] = sdf_radial(thigh(side), P)
+        out[f"foot{side}"] = sdf_radial(foot(side), P)
+        C, ts = arm_curve(side)
+        d, t = sdf_arm(C, arm_radii(ts), ts, P)
+        out[f"arm{side}"], out[f"armt{side}"] = d, t
+    return out
+
+
+def plush_sdf(f):
+    legs = np.minimum(smin(f["thigh1"], f["foot1"], 0.03), smin(f["thigh-1"], f["foot-1"], 0.03))
+    trunk = smin(f["body"], legs, 0.035)
+    s = smin(f["head"], trunk, 0.07)  # soft neck: head is sewn on, not stacked
+    for side in (1, -1):
+        # Arms blend into the shoulder; further down they only touch the tummy.
+        k = 0.05 * (1 - sstep(0.12, 0.35, f[f"armt{side}"])) + 0.004
+        s = smin(f[f"arm{side}"], s, k)
+    return s
+
+
+def plush_weights(P, f, with_arms=True):
+    """Smooth skin-weight field shared by the body and everything sewn onto it."""
+    d_body = np.minimum.reduce([f["body"], f["thigh1"], f["thigh-1"], f["foot1"], f["foot-1"]])
+    w = {}
+    arm_total = np.zeros(len(P))
+    if with_arms:
+        for side, bone in ((1, "arm_L"), (-1, "arm_R")):
+            t = f[f"armt{side}"]
+            diff = d_body - f[f"arm{side}"]
+            near_shoulder = sstep(0.0, 0.22, t) * sstep(-0.03, 0.03, diff)
+            down_arm = sstep(-0.004, 0.004, diff)
+            wa = np.where(t < 0.3, near_shoulder, down_arm * sstep(0.2, 0.3, t) + near_shoulder * (1 - sstep(0.2, 0.3, t)))
+            # Only points actually on (or right next to) the arm belong to it — never the face or tummy.
+            wa = wa * sstep(0.035, 0.008, f[f"arm{side}"]) * (1 - sstep(-0.02, 0.02, d_body - f["head"]))
+            wa = np.clip(wa, 0, 1) * (1 - arm_total)
+            w[bone] = wa
+            arm_total += wa
+    wh = sstep(-0.045, 0.045, d_body - f["head"]) * (1 - arm_total)
+    j = jaw_weight(P) * wh
+    w["head"] = wh - j
+    w["jaw"] = j
+    w["body"] = np.clip(1 - arm_total - wh, 0, 1)
+    return w
+
+
+def plush_normal(P, eps=1e-3):
+    g = np.zeros_like(P)
+    for k in range(3):
+        e = np.zeros(3)
+        e[k] = eps
+        g[:, k] = plush_sdf(plush_fields(P + e)) - plush_sdf(plush_fields(P - e))
+    return norm(g)
+
+
+def snap_to_plush(P, iters=3):
+    """Project points onto the merged plush surface (patches must hug the real body, not the ideal parts)."""
+    shape = np.shape(P)
+    P = np.asarray(P, float).reshape(-1, 3)
+    for _ in range(iters):
+        d = plush_sdf(plush_fields(P))
+        P = P - d[:, None] * plush_normal(P)
+    return P.reshape(shape)
+
+
+def on_plush(surface_uv):
+    return lambda u, v: snap_to_plush(surface_uv(u, v))
+
+
+def attached_weights(P):
+    """Weights for patches/threads/eyes sewn onto the head or body (no arm pull)."""
+    return plush_weights(P, plush_fields(P), with_arms=False)
+
+
+def build_plush_body(voxel=0.0055):
+    from skimage.measure import marching_cubes
+
+    lo = np.array([-0.52, -0.03, -0.42])
+    hi = np.array([0.52, 1.38, 0.68])
+    shape = np.ceil((hi - lo) / voxel).astype(int) + 1
+    xs = [lo[i] + np.arange(shape[i]) * voxel for i in range(3)]
+    vol = np.empty(shape, np.float32)
+    for ix, x in enumerate(xs[0]):  # slice by slice to bound memory
+        Y, Z = np.meshgrid(xs[1], xs[2], indexing="ij")
+        P = np.stack([np.full(Y.size, x), Y.ravel(), Z.ravel()], -1)
+        vol[ix] = plush_sdf(plush_fields(P)).reshape(Y.shape)
+    V, F, _, _ = marching_cubes(vol, 0.0, spacing=(voxel,) * 3)
+    V = V + lo
+    print(f"[oney] marching cubes: {len(V)} verts, {len(F)} tris")
+    return V, F
+
+
+def finish_plush_body(V):
+    """Per-vertex skin weights, fur mask and albedo (cream paw tips) for the merged body."""
+    f = plush_fields(V)
+    w = plush_weights(V, f)
+    fl = np.ones(len(V))
+    albedo = np.tile(srgb_to_linear(COLORS["fur_tan"]), (len(V), 1))
+    cream = srgb_to_linear(COLORS["fur_cream"])
+
+    owner_names = ["head", "body", "thigh1", "thigh-1", "foot1", "foot-1", "arm1", "arm-1"]
+    owner = np.argmin(np.stack([f[n] for n in owner_names]), axis=0)
+
+    # Face: muzzle / eyes / nose are appliqué patches, fur kept short there.
+    HD = head.local_dir_of(V)
+    hu, hv = HD[:, 0], HD[:, 1]
+    hfront = (HD[:, 2] > 0.05) & (owner == 0)
     m_muz = poly_dist(MUZZLE_POLY, MUZZLE_C, hu, hv)
     fl = np.where(hfront, np.minimum(fl, sstep(0.9, 1.04, m_muz)), fl)
     for e in EYE_UV:
@@ -644,32 +823,70 @@ def build():
         fl = np.where(hfront, np.minimum(fl, 0.08 + 0.92 * sstep(1.0, 1.9, d)), fl)
     nose_d = poly_dist(NOSE_POLY, NOSE_C, hu, hv)
     fl = np.where(hfront, np.minimum(fl, sstep(0.95, 1.45, nose_d)), fl)
-    add_part("head", HV, HF, "fur_tan", head_weights(HV), fl)
+
+    # Tummy patch
+    BD = body.local_dir_of(V)
+    bfront = (BD[:, 2] > 0.05) & (owner == 1)
+    fl = np.where(bfront, np.minimum(fl, sstep(0.93, 1.05, in_ellipse(BD[:, 0], BD[:, 1], TUMMY_C, TUMMY_R, 2.2))), fl)
+
+    # Soles
+    for k, side in ((4, 1), (5, -1)):
+        D = foot(side).local_dir_of(V)
+        on = (owner == k) & (D[:, 2] > 0.1)
+        fl = np.where(on, np.minimum(fl, sstep(0.92, 1.05, in_ellipse(D[:, 0], D[:, 1], (0, 0.0), (0.86, 0.9), 2.4))), fl)
+
+    # Cream paw tips (same fabric piece, so a colour change rather than a separate mesh)
+    for k, side in ((6, 1), (7, -1)):
+        t = f[f"armt{side}"]
+        c = sstep(0.8, 0.84, t) * (owner == k)
+        albedo = albedo * (1 - c[:, None]) + cream[None, :] * c[:, None]
+
+    return w, fl, albedo
+
+
+# ----------------------------------------------------------------------------
+# Build
+# ----------------------------------------------------------------------------
+
+
+def build():
+    # One continuous stuffed body: head, body, arms, legs blended like sewn fabric.
+    PV, PF = build_plush_body()
+    obj = add_part("plush", PV, PF, "fur_tan", {}, None, recalc=True)
+    decimate_and_smooth(obj, target_tris=44000)
+    V = from_bl_obj(obj)
+    w, fl, albedo = finish_plush_body(V)
+    set_weights(obj, w)
+    obj.data.attributes["_furlen"].data.foreach_set("value", np.clip(fl, 0, 2).astype(np.float32))
+    alb = obj.data.color_attributes["Albedo"]
+    HEAD_UV = on_plush(head.at_uv)
+    BODY_UV = on_plush(body.at_uv)
+    alb.data.foreach_set("color", np.c_[albedo, np.ones(len(albedo))].astype(np.float32).ravel())
 
     # Muzzle patch (cream), with the nose and mouth area kept short.
     def muzzle_h(rho, u, v):
         return puffy(0.007)(rho, u, v)
 
-    MV, MF, mr, (mu, mv) = patch(head.at_uv, MUZZLE_C, outline_from_polygon(MUZZLE_POLY, MUZZLE_C, 4), muzzle_h, rings=14, segs=90)
+    MV, MF, mr, (mu, mv) = patch(HEAD_UV, MUZZLE_C, outline_from_polygon(MUZZLE_POLY, MUZZLE_C, 4), muzzle_h, rings=14, segs=90)
     mfl = 0.15 + 0.85 * sstep(0.95, 1.5, poly_dist(NOSE_POLY, NOSE_C, mu, mv))
     mouth_d = np.hypot(mu / 0.14, (mv - MOUTH_TOP + 0.11) / 0.1)
     mfl = np.minimum(mfl, 0.3 + 0.7 * sstep(0.7, 1.3, mouth_d))
     mfl = np.minimum(mfl, 0.4 + 0.6 * sstep(1.0, 0.85, mr))  # shorter right at the sewn edge
-    add_part("muzzle", MV, MF, "fur_cream", head_weights(MV), mfl)
+    add_part("muzzle", MV, MF, "fur_cream", attached_weights(MV), mfl)
 
     def on_muzzle(u, v):
-        return head.at_uv(u, v) + uv_normal(head.at_uv, u, v) * 0.006
+        return HEAD_UV(u, v) + uv_normal(HEAD_UV, u, v) * 0.006
 
     # Nose: rounded inverted triangle in velvet
     NV, NF, nr, _ = patch(
-        lambda u, v: head.at_uv(u, v),
+        lambda u, v: HEAD_UV(u, v),
         NOSE_C,
         outline_from_polygon(NOSE_POLY, NOSE_C, 2),  # crisper corners
         puffy(0.026, base=0.005, edge_soft=3.0),
         rings=12,
         segs=72,
     )
-    add_part("nose", NV, NF, "fur_nose", head_weights(NV), 0.5 + 0.5 * (1 - nr))
+    add_part("nose", NV, NF, "fur_nose", attached_weights(NV), 0.5 + 0.5 * (1 - nr))
 
     # Mouth stitch: line down from the nose tip, then a soft little smile.
     def thread_on(surface_uv, uv_pts, lift, name, weights_fn, r=0.0032):
@@ -680,63 +897,44 @@ def build():
         add_part(name, V, F, "thread", weights_fn(V), 0.0)
 
     m0 = MOUTH_TOP
-    thread_on(head.at_uv, [(0, m0 + 0.02), (0, m0 - 0.09)], 0.0085, "mouth_line", head_weights, r=0.0026)
-    thread_on(head.at_uv, [(-0.13, m0 - 0.1), (-0.07, m0 - 0.125), (-0.02, m0 - 0.115), (0, m0 - 0.09)], 0.0085, "mouth_l", head_weights, r=0.0026)
-    thread_on(head.at_uv, [(0.13, m0 - 0.1), (0.07, m0 - 0.125), (0.02, m0 - 0.115), (0, m0 - 0.09)], 0.0085, "mouth_r", head_weights, r=0.0026)
+    thread_on(HEAD_UV, [(0, m0 + 0.02), (0, m0 - 0.09)], 0.0085, "mouth_line", attached_weights, r=0.0026)
+    thread_on(HEAD_UV, [(-0.13, m0 - 0.1), (-0.07, m0 - 0.125), (-0.02, m0 - 0.115), (0, m0 - 0.09)], 0.0085, "mouth_l", attached_weights, r=0.0026)
+    thread_on(HEAD_UV, [(0.13, m0 - 0.1), (0.07, m0 - 0.125), (0.02, m0 - 0.115), (0, m0 - 0.09)], 0.0085, "mouth_r", attached_weights, r=0.0026)
 
     # Eyes: glossy embroidered satin ovals with a stitched highlight
     for i, (eu, ev) in enumerate(EYE_UV):
-        EV, EF, _, _ = patch(head.at_uv, (eu, ev), ellipse_outline(*EYE_R), puffy(0.0075, base=0.001, edge_soft=2.5), rings=8, segs=48)
-        add_part(f"eye{i}", EV, EF, "eye", head_weights(EV), 0.0)
+        EV, EF, _, _ = patch(HEAD_UV, (eu, ev), ellipse_outline(*EYE_R), puffy(0.0075, base=0.001, edge_soft=2.5), rings=8, segs=48)
+        add_part(f"eye{i}", EV, EF, "eye", attached_weights(EV), 0.0)
         su, sv = eu + 0.022, ev + 0.034
-        SV, SF, _, _ = patch(head.at_uv, (su, sv), ellipse_outline(0.019, 0.021), puffy(0.0115, base=0.0085), rings=4, segs=24)
-        add_part(f"eye_shine{i}", SV, SF, "eye_shine", head_weights(SV), 0.0)
+        SV, SF, _, _ = patch(HEAD_UV, (su, sv), ellipse_outline(0.019, 0.021), puffy(0.0115, base=0.0085), rings=4, segs=24)
+        add_part(f"eye_shine{i}", SV, SF, "eye_shine", attached_weights(SV), 0.0)
 
-    # Body + tummy
-    BV, BF, BD = body.mesh(24)
-    bfront = BD[:, 2] > 0.05
-    bfl = np.where(bfront, sstep(0.93, 1.05, in_ellipse(BD[:, 0], BD[:, 1], TUMMY_C, TUMMY_R, 2.2)), 1.0)
-    add_part("body", BV, BF, "fur_tan", {"body": 1.0}, bfl)
+    # Tummy
 
     def tummy_h(rho, u, v):
         fold = -0.007 * np.exp(-(((v - 0.36) / 0.035) ** 2)) * (1 - rho**4)  # chest fold
         return puffy(0.009)(rho, u, v) + fold
 
-    TV, TF, tr, _ = patch(body.at_uv, TUMMY_C, ellipse_outline(*TUMMY_R, 2.2), tummy_h, rings=14, segs=80)
-    add_part("tummy", TV, TF, "fur_cream", {"body": 1.0}, 0.45 + 0.55 * sstep(1.0, 0.86, tr))
+    TV, TF, tr, _ = patch(BODY_UV, TUMMY_C, ellipse_outline(*TUMMY_R, 2.2), tummy_h, rings=14, segs=80)
+    add_part("tummy", TV, TF, "fur_cream", attached_weights(TV), 0.45 + 0.55 * sstep(1.0, 0.86, tr))
 
-    # Legs, feet, soles, toe stitches
+    # Soles, toe stitches
     for side in (1, -1):
-        th = thigh(side)
-        V, F, _ = th.mesh(18)
-        add_part(f"thigh{side}", V, F, "fur_tan", {"body": 1.0})
         ft = foot(side)
-        V, F, D = ft.mesh(20)
-        sole_d = in_ellipse(D[:, 0], D[:, 1], (0, 0.0), (0.86, 0.9), 2.4)
-        ffl = np.where(D[:, 2] > 0.1, sstep(0.92, 1.05, sole_d), 1.0)
-        add_part(f"foot{side}", V, F, "fur_tan", {"body": 1.0}, ffl)
-        SV, SF, sr, _ = patch(ft.at_uv, (0, 0.0), ellipse_outline(0.86, 0.9, 2.4), puffy(0.008), rings=12, segs=64)
+        SV, SF, sr, _ = patch(on_plush(ft.at_uv), (0, 0.0), ellipse_outline(0.86, 0.9, 2.4), puffy(0.008), rings=12, segs=64)
         add_part(f"sole{side}", SV, SF, "fur_cream", {"body": 1.0}, 0.5 + 0.5 * sstep(1.0, 0.85, sr))
         for tu in (-0.28, 0.28):
-            thread_on(ft.at_uv, [(tu, 0.84), (tu * 0.92, 0.42)], 0.0135, f"toe{side}{tu}", lambda V: {"body": 1.0}, r=0.0034)
+            thread_on(on_plush(ft.at_uv), [(tu, 0.84), (tu * 0.92, 0.42)], 0.0135, f"toe{side}{tu}", lambda V: {"body": 1.0}, r=0.0034)
 
     # Tail pom-pom
     tail = Radial((0, 0.2, -0.325), ellipsoid((0.085, 0.08, 0.07)))
     V, F, _ = tail.mesh(12)
     add_part("tail", V, F, "fur_tail", {"body": 1.0})
 
-    # Arms + cream paws + paw stitch
+    # Paw stitches (the arms themselves are part of the plush body)
     for side, bone in ((1, "arm_L"), (-1, "arm_R")):
         C, ts = arm_curve(side)
         r = arm_radii(ts)
-        split = 0.82
-        k = np.searchsorted(ts, split)
-        V, F = tube(C[: k + 2], r[: k + 2] * 1.0, segs=16, cap_start=True, cap_end=False)
-        tcol = np.r_[np.repeat(ts[: k + 2], 16), 0.0]
-        w = sstep(0.02, 0.22, tcol)
-        add_part(f"arm{side}", V, F, "fur_tan", {bone: w, "body": 1 - w}, recalc=True)
-        V, F = tube(C[k - 1 :], r[k - 1 :] * 1.035 + 0.002, segs=16, cap_start=False, cap_end=True)
-        add_part(f"paw{side}", V, F, "fur_cream", {bone: 1.0}, recalc=True)
         # stitch across the paw front
         i0 = np.searchsorted(ts, 0.9)
         Tn = norm(C[min(i0 + 1, len(C) - 1)] - C[i0 - 1])
@@ -744,7 +942,7 @@ def build():
         if fwd[2] < 0:
             fwd = -fwd
         side_v = norm(np.cross(fwd, Tn))
-        rr = r[i0] * 1.035 + 0.002 + 0.0125
+        rr = r[i0] + 0.0105
         pts = [C[i0] + rr * (math.cos(a) * fwd + math.sin(a) * side_v) for a in np.linspace(-0.6, 0.6, 16)]
         V, F = tube(np.array(pts), np.full(16, 0.0032), segs=8)
         add_part(f"paw_stitch{side}", V, F, "thread", {bone: 1.0}, 0.0)
@@ -809,6 +1007,14 @@ def bake_ao(objs, samples=96):
     floor = bpy.context.active_object
     scn.render.bake.target = "VERTEX_COLORS"
     scn.render.bake.use_clear = True
+    albedos = {}
+    for o in objs:  # stash per-vertex colours first so the bake has a single target
+        me = o.data
+        if "Albedo" in me.color_attributes:
+            a = np.zeros(len(me.vertices) * 4, np.float32)
+            me.color_attributes["Albedo"].data.foreach_get("color", a)
+            albedos[o.name] = a.reshape(-1, 4)[:, :3].copy()
+            me.color_attributes.remove(me.color_attributes["Albedo"])
     for o in objs:
         me = o.data
         if "Color" not in me.color_attributes:
@@ -829,6 +1035,8 @@ def bake_ao(objs, samples=96):
         # gentle neighbourhood blur for smoothness
         arr[:, 0] = arr[:, 1] = arr[:, 2] = ao
         arr[:, 3] = 1.0
+        if o.name in albedos:
+            arr[:, :3] *= albedos[o.name]
         col.data.foreach_set("color", arr.ravel())
     bpy.data.objects.remove(floor)
 
@@ -862,6 +1070,12 @@ def build_armature(objs):
 
 def export(path):
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    for o in bpy.context.scene.objects:  # make "Color" both active and render colour, or it isn't exported
+        if o.type == "MESH" and "Color" in o.data.color_attributes:
+            ca = o.data.color_attributes
+            idx = list(ca).index(ca["Color"])
+            ca.active_color_index = idx
+            ca.render_color_index = idx
     bpy.ops.export_scene.gltf(
         filepath=path,
         export_format="GLB",
@@ -946,7 +1160,11 @@ def main():
         for o in objs:
             c = o.data.color_attributes.new("Color", "BYTE_COLOR", "POINT")
             arr = np.ones(len(c.data) * 4, np.float32)
+            if "Albedo" in o.data.color_attributes:
+                o.data.color_attributes["Albedo"].data.foreach_get("color", arr)
+                o.data.color_attributes.remove(o.data.color_attributes["Albedo"])
             c.data.foreach_set("color", arr)
+            o.data.color_attributes.active_color = o.data.color_attributes["Color"]
     rig = build_armature(objs)
     tris = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in objs)
     print(f"[oney] meshes={len(objs)} triangles={tris}")

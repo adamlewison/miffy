@@ -77,6 +77,8 @@ export type RigOptions = {
   intensity?: number;
   /** How far "sad" swings the ears inward (upright ears flop right down; long lop ears only a little). */
   earSad?: number;
+  /** Max inward swing (rad) — long lop ears hang beside the cheeks and must never cross the face. */
+  earMaxIn?: number;
   /** Gesture arm poses tuned to the model's proportions. */
   poses?: Partial<Poses>;
 };
@@ -99,6 +101,7 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
   const earXSign = opts.earXSign ?? 1;
   const earAmt = opts.earAmount ?? 1;
   const earSad = opts.earSad ?? 0.75;
+  const earMaxIn = opts.earMaxIn ?? Infinity;
   const poses: Poses = { ...DEFAULT_POSES, ...opts.poses };
   const I = opts.intensity ?? 1;
   const rest = useRef(new Map<THREE.Object3D, Rest>());
@@ -316,12 +319,12 @@ export function useBunnyAnimator(getRig: () => Rig | null, opts: RigOptions = {}
       const zs = side * earZSign;
       if (n1) {
         const r = rest.current.get(n1)!;
-        _e.set(sp.x1.a * earXSign * I, 0, -sp.z1.a * zs * I);
+        _e.set(sp.x1.a * earXSign * I, 0, -Math.min(sp.z1.a, earMaxIn) * zs * I);
         n1.quaternion.copy(r.q).multiply(_q.setFromEuler(_e));
       }
       if (n2) {
         const r = rest.current.get(n2)!;
-        _e.set(sp.x2.a * earXSign * I, 0, -sp.z2.a * zs * I);
+        _e.set(sp.x2.a * earXSign * I, 0, -Math.min(sp.z2.a, earMaxIn * 0.5) * zs * I);
         n2.quaternion.copy(r.q).multiply(_q.setFromEuler(_e));
       }
     };
