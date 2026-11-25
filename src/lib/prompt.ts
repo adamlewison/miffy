@@ -85,5 +85,7 @@ More:
     .replace(/\b(Miri|Mommy)\b/g, bunny.spokenOwnerName)
     .replace("__OWNER__", bunny.ownerName)
     .replace("__MOMMY__", "Mommy")
-    .replace(/\bOney\b/g, spoken).replace("written \"" + spoken + "\"", "written \"" + bunny.name + "\"");
+    .split(bunny.name).join(spoken)
+    .replace(/\bOney\b/g, spoken) // her old written name, e.g. in older memories
+    .replace("written \"" + spoken + "\"", "written \"" + bunny.name + "\"");
 }
