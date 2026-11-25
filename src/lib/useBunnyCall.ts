@@ -359,7 +359,7 @@ export function useBunnyCall() {
           audio: {
             input: {
               noiseReduction: { type: "near_field" },
-              transcription: { model: "gpt-4o-mini-transcribe", prompt: "Names: One-y (written 1ee), Miffy, Two-y (written 2ee), Booba, Mummy, Miri, Ads, Adam." },
+              transcription: { model: "gpt-4o-mini-transcribe", prompt: "Names: One-y (written 1ee), Miffy, Two-y (written 2ee), Booba, Mummy, Miri, Ads, Adam, Piglet, Kevi, Ellie, Dougie, Chovi, Essie, Simi." },
               turnDetection: { type: "semantic_vad", eagerness: "high", interruptResponse: true, createResponse: true },
             },
             output: { voice: info.voice },
