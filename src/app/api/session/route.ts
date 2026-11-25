@@ -39,7 +39,7 @@ export async function POST() {
               noise_reduction: { type: "near_field" },
               transcription: {
                 model: "gpt-4o-mini-transcribe",
-                prompt: `Names: ${bunny.spokenName} (written ${bunny.name}), ${bunny.alsoCalled.join(", ")}, ${bunny.spokenTwinName} (written ${bunny.twinName}), Booba, ${bunny.ownerName}, Ads, Adam.`,
+                prompt: `Names: ${bunny.spokenName} (written ${bunny.name}), ${bunny.alsoCalled.join(", ")}, ${bunny.spokenTwinName} (written ${bunny.twinName}), Booba, Mummy, ${bunny.ownerName}, Ads, Adam.`,
               },
               turn_detection: { type: "semantic_vad", eagerness: "high", interrupt_response: true, create_response: true },
             },
