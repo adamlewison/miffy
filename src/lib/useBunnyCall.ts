@@ -359,7 +359,7 @@ export function useBunnyCall() {
           audio: {
             input: {
               noiseReduction: { type: "near_field" },
-              transcription: { model: "gpt-4o-mini-transcribe", prompt: "Names: Oney (said One-y), Miffy, Two-y, Booba, Miri, Daddy." },
+              transcription: { model: "gpt-4o-mini-transcribe", prompt: "Names: Oney (said One-y), Miffy, Two-y, Booba, Miri, Ads, Adam." },
               turnDetection: { type: "semantic_vad", eagerness: "high", interruptResponse: true, createResponse: true },
             },
             output: { voice: info.voice },
