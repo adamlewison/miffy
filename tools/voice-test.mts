@@ -23,7 +23,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { RealtimeAgent, RealtimeSession, tool } from "@openai/agents/realtime";
 import { z } from "zod";
-import { VIDEO_NOTES } from "../src/lib/vision";
+import { VIDEO_NOTES, videoNoteText, type VisionEvent } from "../src/lib/vision";
 
 const require = createRequire(import.meta.url);
 const { PitchShifterCore } = require("../public/pitch-shifter.worklet.js");
@@ -104,6 +104,7 @@ let active = 0;
 let lastDone = 0;
 let doneCount = 0;
 session.on("audio", (e: { data: ArrayBuffer }) => chunks.push(Buffer.from(e.data)));
+session.on("error", (e) => console.log("   (ERROR)", JSON.stringify(e).slice(0, 300)));
 session.on("transport_event", async (e: { type: string; transcript?: string }) => {
   if (e.type === "response.created") active++;
   if (e.type === "response.output_audio_transcript.done") console.log(`   ONEY: ${e.transcript}${calls.length ? `   [${calls.splice(0).join(", ")}]` : ""}`);
@@ -149,22 +150,37 @@ if (!has("no-greet")) {
   session.transport.sendEvent({ type: "response.create" });
   await reply();
 }
+// Like the app: [video] notes are deleted once she has answered after them.
+let videoNotes: string[] = [];
+const dropVideoNotes = () => {
+  for (const item_id of videoNotes) session.transport.sendEvent({ type: "conversation.item.delete", item_id });
+  videoNotes = [];
+};
 for (const l of lines) {
-  // "[video] smile" simulates what the camera sees (same notes the app sends).
-  const v = l.match(/^\[video\]\s*(\w+)/);
-  if (v && v[1] in VIDEO_NOTES) {
-    console.log(`(VIDEO: ${v[1]})`);
+  // "[video] smile" simulates what the camera sees when she may speak up about it
+  // (the same note the app sends, plus response.create). "[video-bg] smile" adds it
+  // as background only, the way the app does while someone is talking.
+  const v = l.match(/^\[video(-bg)?\]\s*(\w+)/);
+  if (v && v[2] in VIDEO_NOTES) {
+    const speak = !v[1];
+    console.log(`(VIDEO${speak ? "" : ", background"}: ${v[2]})`);
+    const id = `vid_${Date.now().toString(36)}_${v[2]}`.slice(0, 32);
+    videoNotes.push(id);
     session.transport.sendEvent({
       type: "conversation.item.create",
-      item: { type: "message", role: "system", content: [{ type: "input_text", text: `[video] ${VIDEO_NOTES[v[1] as keyof typeof VIDEO_NOTES][0]}` }] },
+      item: { id, type: "message", role: "system", content: [{ type: "input_text", text: videoNoteText(v[2] as VisionEvent, speak) }] },
     });
-    session.transport.sendEvent({ type: "response.create" });
-    await reply();
+    if (speak) {
+      session.transport.sendEvent({ type: "response.create" });
+      await reply();
+      dropVideoNotes();
+    }
     continue;
   }
   console.log(`MOMMY: ${l}`);
   session.sendMessage(l);
   await reply();
+  dropVideoNotes();
 }
 session.close();
 process.exit(0);

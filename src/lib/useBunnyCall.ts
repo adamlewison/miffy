@@ -5,7 +5,7 @@ import { OpenAIRealtimeWebRTC, RealtimeAgent, RealtimeSession, tool, type Realti
 import { z } from "zod";
 import { bunnyState, setMode, triggerGesture, triggerTrick, type Gesture, type Trick } from "./bunnyState";
 import { getQuality } from "@/components/bunny/quality";
-import { reactLocally, VIDEO_NOTES, VisionWatcher, type VisionEvent } from "./vision";
+import { reactLocally, VIDEO_NOTES, videoNoteText, VisionWatcher, type VisionEvent } from "./vision";
 import { getAudioContext, playHangup, playPickup, startRingback, unlockAudio } from "./sounds";
 
 export type CallStatus = "idle" | "ringing" | "live" | "ended" | "error";
@@ -129,13 +129,18 @@ export function useBunnyCall() {
   const visionRef = useRef<VisionWatcher | null>(null);
   const respondingRef = useRef(false);
   const lastSpokenReactionRef = useRef(0);
+  /** When the voice model was last told about each camera event. */
+  const lastToldRef = useRef<Partial<Record<VisionEvent, number>>>({});
+  /** [video] notes still in the conversation, removed once she has answered after them. */
+  const videoNotesRef = useRef<{ id: string; at: number }[]>([]);
+  const responseStartedAtRef = useRef(0);
 
   /** Send her current camera frame to the bunny (no response triggered). */
   const sendFrame = useCallback((force = false) => {
     const video = videoRef.current;
     const session = sessionRef.current;
     if (!video || !session || !camRef.current || video.videoWidth === 0) return;
-    if (!force && performance.now() - lastFrameRef.current < 4000) return;
+    if (!force && performance.now() - lastFrameRef.current < 20_000) return;
     lastFrameRef.current = performance.now();
     const w = 384;
     const h = Math.round((video.videoHeight / video.videoWidth) * w);
@@ -150,23 +155,35 @@ export function useBunnyCall() {
     }
   }, []);
 
-  /** Tell the bunny what she just saw on the video (with a fresh frame), and maybe let her react out loud. */
+  /**
+   * She saw something on the video. Her body always reacts at once. Her voice is
+   * told only now and then (`VIDEO_NOTES[e].every`), and only prompted to speak
+   * when nobody is talking. Passing moments (smiles, waves) she can't react to
+   * right now are dropped rather than queued, and every note is deleted again
+   * once she has answered, so old notes can't pile up and steer every reply.
+   */
   const onVision = useCallback(
     (e: VisionEvent) => {
       reactLocally(e);
       const session = sessionRef.current;
       if (!session) return;
-      const [text, wantsReply] = VIDEO_NOTES[e];
-      sendFrame(true);
+      const note = VIDEO_NOTES[e];
+      const now = Date.now();
+      if (now - (lastToldRef.current[e] ?? -1e12) < note.every * 1000) return;
+      const quiet = !respondingRef.current && bunnyState.mode === "idle";
+      // At most one unprompted remark every 20 s, whatever she saw (a sad face may always speak).
+      const speak = !!note.speak && quiet && (e === "sad" || now - lastSpokenReactionRef.current > 20_000);
+      if (!speak && !note.later) return;
+      lastToldRef.current[e] = now;
+      if (speak) sendFrame(true);
+      const id = `vid_${now.toString(36)}_${e}`.slice(0, 32);
       try {
         session.transport.sendEvent({
           type: "conversation.item.create",
-          item: { type: "message", role: "system", content: [{ type: "input_text", text: `[video] ${text}` }] },
+          item: { id, type: "message", role: "system", content: [{ type: "input_text", text: videoNoteText(e, speak) }] },
         });
-        // Only speak up if nobody is talking; otherwise this just colours her next reply.
-        const quietFor = e === "smile" ? 40_000 : e === "sad" ? 0 : 6_000;
-        const now = Date.now();
-        if (wantsReply && !respondingRef.current && bunnyState.mode === "idle" && now - lastSpokenReactionRef.current > quietFor) {
+        videoNotesRef.current.push({ id, at: now });
+        if (speak) {
           lastSpokenReactionRef.current = now;
           session.transport.sendEvent({ type: "response.create" });
         }
@@ -221,6 +238,9 @@ export function useBunnyCall() {
     micRef.current = null;
     stopCamera();
     respondingRef.current = false;
+    lastToldRef.current = {};
+    videoNotesRef.current = [];
+    lastSpokenReactionRef.current = 0;
     voiceNodesRef.current.forEach((n) => n.disconnect());
     voiceNodesRef.current = [];
     if (audioElRef.current) {
@@ -366,10 +386,21 @@ export function useBunnyCall() {
             break;
           case "response.created":
             respondingRef.current = true;
+            responseStartedAtRef.current = Date.now();
             break;
-          case "response.done":
+          case "response.done": {
             respondingRef.current = false;
+            // She has answered with these [video] notes in view: take them out of the
+            // conversation so they don't keep steering later replies.
+            const seen = videoNotesRef.current.filter((n) => n.at <= responseStartedAtRef.current);
+            videoNotesRef.current = videoNotesRef.current.filter((n) => n.at > responseStartedAtRef.current);
+            for (const n of seen) {
+              try {
+                session.transport.sendEvent({ type: "conversation.item.delete", item_id: n.id });
+              } catch {}
+            }
             break;
+          }
           case "output_audio_buffer.started":
             setMode("talking");
             break;

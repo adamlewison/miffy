@@ -38,6 +38,7 @@ export class ReactionLogic {
   private smileRun = 0;
   private sadSince: number | null = null;
   private smileArmed = true;
+  private smileLowSince: number | null = null;
   private last: Record<VisionEvent, number> = { face_seen: -1e9, smile: -1e9, wave: -1e9, sad: -1e9, thumbs_up: -1e9, love: -1e9 };
   private handHist: { t: number; g: string }[] = [];
   /** Latest smoothed scores, for debugging (/preview?debug=1). */
@@ -68,14 +69,18 @@ export class ReactionLogic {
         this.scores.smile = smile;
         // Many resting faces already read ~0.3-0.4 "smile", so fire high and re-arm just below.
         if (smile > 0.55) {
+          this.smileLowSince = null;
           // Two smiling looks in a row (~0.25 s on a phone): a real smile, not a blip.
           if (++this.smileRun >= 2 && this.smileArmed) {
-            this.smileArmed = false; // once per smile; re-arms when the smile fades
-            this.fire("smile", t, 10);
+            this.smileArmed = false; // once per smile; re-arms when the smile has properly faded
+            this.fire("smile", t, 30);
           }
         } else if (smile < 0.45) {
           this.smileRun = 0;
-          this.smileArmed = true;
+          // Talking and laughing make the score flicker around the threshold, so a
+          // smile only counts as "over" after a couple of seconds without it.
+          this.smileLowSince ??= t;
+          if (t - this.smileLowSince >= 2) this.smileArmed = true;
         }
 
         // A sad face: mouth corners down and/or brows pinched up, and no smile.
@@ -88,6 +93,7 @@ export class ReactionLogic {
       } else {
         this.faceRun = 0;
         this.smileRun = 0;
+        this.smileLowSince = null;
         this.sadSince = null;
       }
     }
@@ -107,23 +113,69 @@ export class ReactionLogic {
 }
 
 /**
- * What the voice model is told when she sees something (sent as a system note
- * with a fresh camera frame), and whether it may prompt her to speak up.
+ * What the voice model hears about the camera. Her *body* reacts to every
+ * event (`reactLocally`); her *voice* hears about it rarely, because every note
+ * stays in the conversation and colours her next replies. (Sending a "say
+ * something about her smile" note on every smile made her compliment Mommy's
+ * smile in every single sentence.)
+ *
+ * - `saw`: what happened, as plain background.
+ * - `speak`: added only when she is allowed to speak up about it right now
+ *   (nobody talking, see `onVision` in useBunnyCall.ts). null = never prompts her.
+ * - `later`: what to do with it in her next reply when she can't speak up right
+ *   now (someone is talking). null = a passing moment (a smile, a wave): dropped,
+ *   not queued, because by her next turn it would be stale.
+ * - `every`: tell the voice model at most once per this many seconds.
  */
-export const VIDEO_NOTES: Record<VisionEvent, [string, boolean]> = {
-  face_seen: [
-    "You can SEE Mommy on the video now! You're sooo excited to see her face. Say a tiny, super excited toddler burst about seeing her (you're already cheering — never describe it).",
-    true,
-  ],
-  wave: ["Mommy is waving at you on the video! (You're already waving back.) Say a tiny excited hi-hi.", true],
-  smile: ["Mommy is smiling at you on the video. Say something tiny and cute or silly about her big smile, like a cheeky little kid.", true],
-  sad: [
-    'Mommy looks a bit sad on the video. Be her happy little comforter: extra sweet and cheerful, ask like a kid ("Mommy, why you got a sad face?"), offer a big cuggle, and say something silly to make her giggle. (You\'re already cuddling — don\'t describe it.)',
-    true,
-  ],
-  thumbs_up: ["Mommy is giving you a thumbs up on the video! (You're clapping.) A tiny proud reaction.", false],
-  love: ["Mommy is doing the I-love-you hand sign on the video! (You're cuddling.) Tell her you wuv her too.", true],
+export type VideoNote = { saw: string; speak: string | null; later: string | null; every: number };
+
+export const VIDEO_NOTES: Record<VisionEvent, VideoNote> = {
+  face_seen: {
+    saw: "Mommy's face just came onto the video.",
+    speak: "You're sooo excited to see her! Say a tiny, super excited toddler burst about seeing her (you're already cheering — never describe it).",
+    later: "In your next answer, a tiny happy \"I can see you!\" bit, then answer her.",
+    every: 60,
+  },
+  wave: {
+    saw: "Mommy waved at you on the video (you're already waving back).",
+    speak: "Say a tiny excited hi-hi, nothing more.",
+    later: null,
+    every: 30,
+  },
+  smile: {
+    saw: "Mommy smiled at you on the video just now.",
+    speak:
+      "At most a tiny giggle or two or three happy words, then carry on with whatever you were talking about. Don't compliment her smile if you already did on this call.",
+    later: null,
+    every: 300,
+  },
+  sad: {
+    saw: "Mommy looks a bit sad on the video.",
+    speak:
+      'Be her happy little comforter: extra sweet and cheerful, ask like a kid ("Mommy, why you got a sad face?"), offer a big cuggle, and say something silly to make her giggle. (You\'re already cuddling — don\'t describe it.)',
+    later: "In your next answer be extra sweet and cheerful, and if it fits, ask like a kid why she's sad and offer a cuggle.",
+    every: 120,
+  },
+  thumbs_up: {
+    saw: "Mommy gave you a thumbs up on the video (you're clapping).",
+    speak: "A tiny proud reaction, two or three words.",
+    later: null,
+    every: 120,
+  },
+  love: {
+    saw: "Mommy did the I-love-you hand sign on the video (you're cuddling).",
+    speak: "Tell her you wuv her too, tiny and sweet.",
+    later: "In your next answer, tell her you wuv her too (tiny), then answer her.",
+    every: 120,
+  },
 };
+
+/** The `[video]` system note for an event: with its cue if she's speaking up about it, else as background. */
+export function videoNoteText(e: VisionEvent, speaking: boolean): string {
+  const n = VIDEO_NOTES[e];
+  if (speaking && n.speak) return `[video] ${n.saw} ${n.speak}`;
+  return `[video] ${n.saw} ${n.later ?? "(Background only. Don't mention it unless it really fits what you're saying.)"}`;
+}
 
 /** Her body's instant reaction to what she sees (the voice reaction comes from the model). */
 export function reactLocally(e: VisionEvent) {
