@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   if (!VOICES.includes(voice)) return new Response("unknown voice", { status: 400 });
   const text =
     req.nextUrl.searchParams.get("text")?.slice(0, 300) ||
-    `${bunny.ownerName}yyy! It's me, ${bunny.name}! I been waiting and waiting all da day! And... and den I did a big hop! I wuv you a hundred much! Heehee!`;
+    `Hi ${bunny.spokenOwnerName}! It's me, ${bunny.spokenName}. I been waiting for you all da day. And den I did a wittle hop. Heehee.`;
 
   const res = await fetch(`${OPENAI_BASE}/audio/speech`, {
     method: "POST",

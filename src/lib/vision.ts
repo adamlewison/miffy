@@ -1,5 +1,5 @@
 /**
- * Oney watches Mommy's camera, on the phone itself.
+ * Oney watches Miri's camera, on the phone itself.
  *
  * MediaPipe's face landmarker (with blendshapes: smiles, frowns, brows) and
  * gesture recogniser (open palm, thumbs up, "I love you" sign) run in the
@@ -116,7 +116,7 @@ export class ReactionLogic {
  * What the voice model hears about the camera. Her *body* reacts to every
  * event (`reactLocally`); her *voice* hears about it rarely, because every note
  * stays in the conversation and colours her next replies. (Sending a "say
- * something about her smile" note on every smile made her compliment Mommy's
+ * something about her smile" note on every smile made her compliment Miri's
  * smile in every single sentence.)
  *
  * - `saw`: what happened, as plain background.
@@ -131,40 +131,40 @@ export type VideoNote = { saw: string; speak: string | null; later: string | nul
 
 export const VIDEO_NOTES: Record<VisionEvent, VideoNote> = {
   face_seen: {
-    saw: "Mommy's face just came onto the video.",
-    speak: "You're sooo excited to see her! Say a tiny, super excited toddler burst about seeing her (you're already cheering — never describe it).",
+    saw: "Miwi's face just came onto the video.",
+    speak: "You're happy to see her. Say a tiny, sweet hello about seeing her (you're already cheering — never describe it).",
     later: "In your next answer, a tiny happy \"I can see you!\" bit, then answer her.",
     every: 60,
   },
   wave: {
-    saw: "Mommy waved at you on the video (you're already waving back).",
-    speak: "Say a tiny excited hi-hi, nothing more.",
+    saw: "Miwi waved at you on the video (you're already waving back).",
+    speak: "Just a tiny \"hi!\", nothing more.",
     later: null,
     every: 30,
   },
   smile: {
-    saw: "Mommy smiled at you on the video just now.",
+    saw: "Miwi smiled at you on the video just now.",
     speak:
       "At most a tiny giggle or two or three happy words, then carry on with whatever you were talking about. Don't compliment her smile if you already did on this call.",
     later: null,
     every: 300,
   },
   sad: {
-    saw: "Mommy looks a bit sad on the video.",
+    saw: "Miwi looks a bit sad on the video.",
     speak:
-      'Be her happy little comforter: extra sweet and cheerful, ask like a kid ("Mommy, why you got a sad face?"), offer a big cuggle, and say something silly to make her giggle. (You\'re already cuddling — don\'t describe it.)',
+      'Be her sweet little comforter: gentle and cuddly, ask like a kid ("Miwi, why you got a sad face?"), offer a big cuggle, and say something silly to make her giggle. (You\'re already cuddling — don\'t describe it.)',
     later: "In your next answer be extra sweet and cheerful, and if it fits, ask like a kid why she's sad and offer a cuggle.",
     every: 120,
   },
   thumbs_up: {
-    saw: "Mommy gave you a thumbs up on the video (you're clapping).",
+    saw: "Miwi gave you a thumbs up on the video (you're clapping).",
     speak: "A tiny proud reaction, two or three words.",
     later: null,
     every: 120,
   },
   love: {
-    saw: "Mommy did the I-love-you hand sign on the video (you're cuddling).",
-    speak: "Tell her you wuv her too, tiny and sweet.",
+    saw: "Miwi did the I-love-you hand sign on the video (you're cuddling).",
+    speak: "A tiny, soft \"wuv you too\".",
     later: "In your next answer, tell her you wuv her too (tiny), then answer her.",
     every: 120,
   },

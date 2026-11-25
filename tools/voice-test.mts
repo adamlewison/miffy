@@ -8,7 +8,7 @@
  *   npx tsx tools/voice-test.mts --lines "What's your name?" --audio .oney-out/voice --transcribe
  *
  * Options
- *   --lines "a|b|c"   what Mommy says (default: a short everyday call)
+ *   --lines "a|b|c"   what Miri says (default: a short everyday call)
  *   --no-greet        skip the pick-up greeting
  *   --audio DIR       save each reply as WAV: NN.wav (raw voice) and NN-phone.wav (pitch-shifted, as heard on the phone)
  *   --transcribe      re-transcribe her audio (raw and pitch-shifted) with a separate model and no hints —
@@ -145,7 +145,7 @@ if (!has("no-greet")) {
   console.log("MOMMY: (calls — Oney picks up)");
   session.transport.sendEvent({
     type: "conversation.item.create",
-    item: { type: "message", role: "system", content: [{ type: "input_text", text: "Mommy just called you and you picked up. Silently call get_time_of_day first (don't mention it), then greet her like a super excited little toddler, in one or two tiny sentences — toddler words, no \"good morning/evening\". (You're already waving hello.)" }] },
+    item: { type: "message", role: "system", content: [{ type: "input_text", text: "Miwi just called you and you picked up. Silently call get_time_of_day first (don't mention it), then then greet her softly and happily, like a little kid pleased to see her, in one or two tiny sentences — toddler words, not over-excited, no \"good morning/evening\". (You're already waving hello.)" }] },
   });
   session.transport.sendEvent({ type: "response.create" });
   await reply();

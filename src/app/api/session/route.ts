@@ -39,7 +39,7 @@ export async function POST() {
               noise_reduction: { type: "near_field" },
               transcription: {
                 model: "gpt-4o-mini-transcribe",
-                prompt: `Names: ${bunny.name} (said "One-y"), ${bunny.alsoCalled.join(", ")}, Two-y, Booba, Mommy, Daddy.`,
+                prompt: `Names: ${bunny.name} (said "One-y"), ${bunny.alsoCalled.join(", ")}, Two-y, Booba, ${bunny.ownerName}, Daddy.`,
               },
               turn_detection: { type: "semantic_vad", eagerness: "high", interrupt_response: true, create_response: true },
             },
@@ -63,7 +63,7 @@ export async function POST() {
       pitchSemitones,
       instructions,
       bunnyName: bunny.name,
-      ownerName: bunny.ownerName,
+      ownerName: bunny.spokenOwnerName, // as she says it, for the pick-up note
     });
   } catch (err) {
     console.error("[session]", err);

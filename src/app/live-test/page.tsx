@@ -113,7 +113,7 @@ export default function LiveTest() {
       const greet = async () => {
         if (greeted) return;
         greeted = true;
-        await send({ type: "conversation-item-create", item: { type: "text-message", role: "user", text: "(Mommy just called you and you picked up. Greet her like a super excited little toddler, in one or two tiny sentences.)" } });
+        await send({ type: "conversation-item-create", item: { type: "text-message", role: "user", text: "(Miwi just called you and you picked up. Greet her softly and happily, like a little kid pleased to see her, in one or two tiny sentences.)" } });
         await send({ type: "response-create" });
       };
 

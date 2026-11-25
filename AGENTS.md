@@ -2,7 +2,7 @@
 
 **This file is the single source of truth for this repo.** `CLAUDE.md` and `README.md` just point here. When you change how something works, update this file in the same commit.
 
-A private web app built by Adam for his wife. She opens it on her phone, taps **Call**, and her real plush bunny, **Oney**, picks up as a 3D bunny on a FaceTime-style video call, sitting on Mommy's real bed (restyled to be warm and dreamy). Oney talks back in a little girl's voice, moves (waves, nuzzles, gets sad, hops), **reacts to Mommy on the video** (gets excited to see her, waves back, giggles at smiles, comforts her when she looks sad), and remembers things between calls.
+A private web app built by Adam for his wife. Her name is **Miri**. She opens it on her phone, taps **Call**, and her real plush bunny, **Oney**, picks up as a 3D bunny on a FaceTime-style video call, sitting on Miri's real bed (restyled to be warm and dreamy). Oney talks back in a little girl's voice, moves (waves, nuzzles, gets sad, hops), **reacts to Miri on the video** (gets excited to see her, waves back, giggles at smiles, comforts her when she looks sad), and remembers things between calls.
 
 - Live: **https://miffy-mu.vercel.app** (passcode-locked; ask Adam for the passcode)
 - Repo: `adamlewison/miffy`. **Pushing to `main` auto-deploys to Vercel.**
@@ -15,13 +15,14 @@ A private web app built by Adam for his wife. She opens it on her phone, taps **
 ### She is a 3–4 year old little girl
 Every change to voice, prompt or personality must keep this true:
 - **Name:** written "Oney" but said **"WUN-ee"**, like the number one (her sister is **Two-y**). The family also calls her **Miffy**. The prompt always spells it `spokenName` ("One-y"), because the voice model pronounces what it reads, and "Oney" comes out as "own-ee". To check: `tools/voice-test.mts --transcribe` should hear her name as "Wunny".
-- **Family:** she calls the user **Mommy**, Adam **Daddy**, and Mommy's mum **Booba**.
-- **Voice:** a small child's: high, squeaky, bubbly. The realtime voices are all adults, so we use `sage` on `gpt-realtime-2.1` plus a client-side pitch shift (`pitchSemitones`, default +8, `public/pitch-shifter.worklet.js`).
+- **Family:** she calls the user by her name, **Miri**, said the cute toddler way **"Miwi"** (`ownerName` / `spokenOwnerName`; the prompt always spells it "Miwi", like her own name, and turns any "Miri"/"Mommy" into "Miwi"). **Never "Mommy"**. Adam is **Daddy**, and Miri's mum is **Booba**.
+- **Voice:** a small child's: high, soft, sweet and a bit squeaky. The realtime voices are all adults, so we use `sage` on `gpt-realtime-2.1` plus a client-side pitch shift (`pitchSemitones`, default +8, `public/pitch-shifter.worklet.js`).
 - **Pronunciation:** toddler sounds (da/den/dat, w for r/l, "pasketti", "nana", "free" for three). One or two baby-words per sentence, always understandable.
 - **Grammar:** "I runned", "me so happy", "bestest", and she calls herself "One-y".
 - **Sentence structure:** tiny sentences, "and... and... and den", repetition, sudden topic jumps, "why?" questions. **Never** grown-up phrases ("good evening", "that sounds lovely", "let me think").
 - **Body language:** wave (paw beside her face), nuzzle/cuddle, sad (head sags, paws to her face), plus hops. These go through the `express` tool and are **never narrated** ("I'm waving" is a bug).
-- **Personality:** sweet and a little bit cheeky: silly confident nonsense, jokes that don't quite work, playful fibs she gives away at once. Never naughty or mean. When Mommy is sad she's a sunny, cuddly, silly comforter, never worried or grown-up.
+- **Energy:** cute, cuddly and a little laid-back, **not hyper**. Most replies are calm and sweet; only really big news gets a moment of excitement. She says "I love you" only now and then (goodbye, or when Miri says it first).
+- **Personality:** sweet and a little bit cheeky: silly confident nonsense, jokes that don't quite work, playful fibs she gives away at once. Never naughty or mean. When Miri is sad she's a gentle, cuddly, silly comforter, never worried or grown-up.
 
 If any line in a test transcript sounds like a grown-up, it's a bug.
 
@@ -45,7 +46,7 @@ Arms and ears never pass through her head, body, legs or each other. This is enf
 1. **Her body is code.** `blender/build_oney.py` runs Blender headless (as a Python library) and builds her from maths: each part is a smooth 3D shape sized from the photos, the parts are blended into one stuffed surface, and patches and stitches are laid on top. It also bakes soft shadows, adds a 21-bone skeleton, and exports `public/bunny.glb` plus `public/bunny.collision.json`.
 2. **Her fur is drawn live** (per-strand warm/cool colour, soft tufts of clumped length, sun-bleached tips and a warm scattered-light glow in shadow). `fur.ts` redraws each fabric part 4 times on phones and 20 on desktop, each layer pushed slightly further out and cut into strands, so she looks fluffy. The GLB itself is smooth.
 3. **Her movement is code.** `rig.ts` turns her bones every frame: breathing, springy ears, a head bob from her voice volume, and gesture poses. `collide.ts` then nudges any arm or ear out of her body.
-4. **She sees Mommy.** On a call the front camera comes on (like FaceTime). MediaPipe runs face and hand tracking **on the phone** (`src/lib/vision.ts`), turning smiles, frowns, waves, thumbs-ups and the I-love-you sign into events. Each event makes her body react at once. Her voice hears about it only now and then (smiles at most every 5 min), so she doesn't comment on everything. Video is never streamed anywhere.
+4. **She sees Miri.** On a call the front camera comes on (like FaceTime). MediaPipe runs face and hand tracking **on the phone** (`src/lib/vision.ts`), turning smiles, frowns, waves, thumbs-ups and the I-love-you sign into events. Each event makes her body react at once. Her voice hears about it only now and then (smiles at most every 5 min), so she doesn't comment on everything. Video is never streamed anywhere.
 5. **Her voice is OpenAI Realtime.** Audio goes straight from the phone to OpenAI over WebRTC. Our server only mints a 10-minute key and builds her instructions (character sheet plus memories). Her reply audio is pitch-shifted on the phone and drives the talking animation.
 
 ```
@@ -204,7 +205,7 @@ db/schema.sql                memories table (auto-created; reference)
   - `get_time_of_day`
   - `express` (wave, nuzzle, sad, hop, wiggle, spin, ear_flick, giggle, clap, cheer, shy, sleepy)
   - `remember_this`
-- **Camera (video call):** on by default when she picks up (remembered in `localStorage` `oney.camera` if Mommy turns it off). The self-view sits top-right like FaceTime. A small frame goes to the model when Mommy starts speaking (at most one every 20 s) and whenever she speaks up about a vision event.
+- **Camera (video call):** on by default when she picks up (remembered in `localStorage` `oney.camera` if Miri turns it off). The self-view sits top-right like FaceTime. A small frame goes to the model when Miri starts speaking (at most one every 20 s) and whenever she speaks up about a vision event.
 - **Vision reactions (`src/lib/vision.ts`):** MediaPipe Tasks Vision (`@mediapipe/tasks-vision` 1.2.2; wasm from jsDelivr, models from Google's storage, both pinned) runs a face landmarker (blendshapes) and gesture recogniser about 8 times a second, alternating, GPU with CPU fallback. Events: `face_seen` (first time, or after 20 s away) → cheer + hop; `wave` (open palm) → waves back; `smile` → giggle; `sad` (frown/brows for ~1.4 s) → nuzzle; `thumbs_up` → clap; `love` (ILY sign) → nuzzle. Her body always reacts. The voice model is told through a `[video]` system note (`VIDEO_NOTES`, `videoNoteText`), throttled per event (`every`). If nobody is talking (and she hasn't spoken up in the last 20 s), the note carries a `speak` cue plus `response.create`. Otherwise sad/love/face_seen go in as a `later` note for her next reply, and passing moments (smile, wave, thumbs_up) are dropped. Each note has its own item id and is deleted (`conversation.item.delete`) after the next reply, so old notes never pile up.
 - **Hanging up:** the transcript goes to `/api/memories` with keepalive. Facts are extracted and the transcript is discarded. No audio is ever stored.
 
@@ -214,7 +215,7 @@ Turso/libSQL. The table is auto-created (`db/schema.sql` is for reference). The 
 ### Model loading and animation: `src/components/bunny/`
 | File | Role |
 | --- | --- |
-| `BunnyScene.tsx` | Canvas, lights, FaceTime framing (head, shoulders and upper tummy, fitted per screen shape) with a slow handheld drift, the bedroom backdrop (`public/room-portrait.jpg` / `room-landscape.jpg`: Mommy's real bed (grey headboard, textured wallpaper, navy floral bedding) restyled with OpenAI image edits into warm, dreamy lamplight, then lightly blurred; an unlit plane far behind her). To redo it, send a photo of the bed to `/v1/images/edits` (gpt-image-2) at 1024x1536 and 1536x1024, keeping the layout and asking for warm, soft, storybook lighting with nothing in the centre, `?view=full\|face\|side\|paw` for test shots (no room, no drift), fps cap (30 on touch), contact shadow, GLB detection |
+| `BunnyScene.tsx` | Canvas, lights, FaceTime framing (head, shoulders and upper tummy, fitted per screen shape) with a slow handheld drift, the bedroom backdrop (`public/room-portrait.jpg` / `room-landscape.jpg`: Miri's real bed (grey headboard, textured wallpaper, navy floral bedding) restyled with OpenAI image edits into warm, dreamy lamplight, then lightly blurred; an unlit plane far behind her). To redo it, send a photo of the bed to `/v1/images/edits` (gpt-image-2) at 1024x1536 and 1536x1024, keeping the layout and asking for warm, soft, storybook lighting with nothing in the centre, `?view=full\|face\|side\|paw` for test shots (no room, no drift), fps cap (30 on touch), contact shadow, GLB detection |
 | `GlbBunny.tsx` | loads `bunny.glb` and `bunny.collision.json`, applies fur, per-model rig options and gesture poses |
 | `rig.ts` | all procedural animation: states, spring ears, voice-driven bob/squish/jaw, tricks, held gestures |
 | `collide.ts` | per-frame solid-body solve (head and body SDF grids, arm and ear spheres) |
@@ -294,10 +295,11 @@ None of the helper pages are linked from the call UI.
 - **Long lop ears swinging inward cross her face.** `earMaxIn` clamps that. Ears are also pushed outward by arms (`collide.ts`).
 - **On the lop ears, positive ear Z in `rig.ts` swings them *inward*** (clamped by `earMaxIn`). To get the ears out of the way of raised arms (cheer, the sleepy yawn), subtract from `restZ`. Otherwise the arm squeezes the ear against her head and `check:solid` fails on `ear_L_1 vs arm sphere`.
 - **Her name:** "Oney" and "Wunny" spellings were tried; "One-y" is the one the voice reliably says as WUN-ee (verified with cold transcription).
-- **She narrates moves unless told not to.** Tool use must be silent, and the greeting must not say "good evening".
+- **She narrates moves unless told not to.** Tool use must be silent, and the greeting must not say "good evening". On big news ("I'm pregnant!") the model liked to say "let me think how to say this" before calling a tool; the prompt now bans thinking out loud explicitly.
+- **She was too hyper.** Early versions answered everything with "Mommyyy! Hi hi hi! I wuv you a hundred much!". The examples set the energy more than the rules do, so keep the examples calm.
 - **The software renderer is slow.** Gestures need `--hold` and long waits, or screenshots catch them half-blended.
 - **Resting faces already "smile" a bit.** Blendshape `mouthSmile` sits around 0.3–0.4 on a neutral face, so a smile fires above 0.55 and re-arms below 0.45. Don't use absolute "no smile" thresholds near 0.3.
-- **Every system note steers every later reply.** The first vision version sent "say something about her smile" on each smile (up to every 10 s; laughing makes the smile score flicker). Notes piled up in the conversation and she complimented Mommy's smile in every sentence. Now notes are rare, phrased as one-off cues, and deleted after she answers.
+- **Every system note steers every later reply.** The first vision version sent "say something about her smile" on each smile (up to every 10 s; laughing makes the smile score flicker). Notes piled up in the conversation and she complimented Miri's smile in every sentence. Now notes are rare, phrased as one-off cues, and deleted after she answers.
 - **Count frames, not seconds, for hand gestures.** Slow devices analyse far less often; the wave check uses the last few hand frames (within 2.5 s), not a short time window.
 
 ## 7. Open items
